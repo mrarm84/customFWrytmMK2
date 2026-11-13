@@ -1,0 +1,46 @@
+[mod]
+id      = "0023-isr-meter"
+title   = "Audio interrupt load meter over USB"
+
+# A measuring build: off by default; build with --mods to include it
+# (see tools/isr_meter.py).
+enabled = false
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+A measuring build: the audio interrupt's load, streamed on USB audio channel 10
+for tools/isr_meter.py. Sound on the device is untouched; only what USB (and the
+sampler) reads of voice slot 7 is replaced.
+
+DMA timer 0 (DTCN0, about 130 MHz, as 0013's timing build) is read at:
+- the interrupt's entry (0x4011fafa) and its single exit (0x4012163a, before
+  the rte; the alternate path joins there too): the whole run and the interval
+  between interrupts;
+- 0x40120c88 and 0x40120e32: section S1, the per-block parameter smoothing
+  (the 286-pass glide over the engine's working array, 0x40120cba) and the
+  per-track interpolation (13 x 21 msac passes, 0x40120e0c), with the small
+  per-track loops between them;
+- 0x40120e32 and 0x40120fa8: section S2, scene locks (only while a scene is
+  engaged), CTRL IN (adc_pedal_update, 0020's gate detection, the two route
+  calls), velocity/aftertouch routes and the 48 performance locks.
+
+Block k's words go out during block k+1, over voice slot 7's word of the receive
+buffer just before stock hands it to USB (0x40121434), main path only: each
+(tag << 24) | (data << 8), every fourth frame in turn:
+  0xa5  the whole run / 4         0x5a  the interval / 4
+  0x3c  S1 in ticks               0xc3  S2 in ticks
+each held at 0xffff. The meter itself adds about 60 instructions a block.
+
+Do not combine with 0013 `timing = 1`, which writes the same slot. If the
+computer loops the Rytm's USB audio back into it, the words come back into MAIN
+as clicks (as with 0013's timing build).
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+symbols = []
