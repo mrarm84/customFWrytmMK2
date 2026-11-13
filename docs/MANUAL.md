@@ -18,7 +18,7 @@ The default image is
 | 0014 | TRK + any knob | turn that parameter on every sound track |
 | 0015 | SOUND SETTINGS > ENV RESET | AMP and AMP+FILT: the amp envelope restarts on every trig |
 | 0019 | FX track: REVERB page encoder G (turn, press), REVERB 2 page; DISTORTION page D/E/F; AUDIO ROUTING > DIST FILTER | phaser on the reverb or delay input; octaver, crusher, hiss, chorus, comb and ring mod on REVERB 2, each movable to the delay; a filter feeding the distortion |
-| 0020 | none | a gate into CTRL IN 1 plays T1, into CTRL IN 2 plays T5 |
+| 0020 | none | a gate into CTRL IN 1 plays T1, into CTRL IN 2 plays T2, once a gate |
 | 0022 | none | the delay's longest time is 5.33 s (was 8 s), freeing 2 MB of RAM for new effects and machines |
 | 0021 | SYNTH page, machine DG SINE, DG SAW, DG PULSE, DG FM2 or DG ORGAN | new digital machines, chromatically tuned, on every track |
 
@@ -379,28 +379,35 @@ yet run on hardware; that STOP twice reaches it is assumed, not checked.
 
 ## 0020 - CV trig
 
-A gate or trigger into a CTRL IN jack plays a track, as a pad does. There is
-nothing to set up:
+A gate or trigger into a CTRL IN jack plays a track once, as tapping its pad
+does. There is nothing to set up, and no page for it.
 
-- **CTRL IN 1 plays T1** (pad 1, BD). **CTRL IN 2 plays T5** (pad 5, BT).
-- It works in any CONTROL INPUT mode.
-- The gate goes **on** above **1.0 V**: the track plays at its own pitch,
-  velocity 127. It goes **off** below **0.5 V**, which sends the note-off, so on
-  sounds that hold until note-off (AMP HLD 0) the gate's length is the note's.
-- Any gate or trigger of about 1 ms or longer and over 1 V works (5 V and 10 V
-  modular gates included). The gap between the two thresholds keeps a noisy
-  signal from triggering twice.
-- CONTROL IN 1 MOD and 2 MOD keep working, so one gate can trigger a sound and
-  modulate it.
+- **CTRL IN 1 plays T1** (pad 1, BD). **CTRL IN 2 plays T2** (pad 2, SD).
+- **One gate is one trig.** The track plays when the gate rises above **1.0 V**,
+  at its own pitch, velocity 127. However long the gate stays high, it plays
+  only once; the next trig needs the gate to fall below **0.5 V** first.
+- The note is 50 ms long whatever the gate's length, which only matters on
+  sounds that hold until note-off (AMP HLD at its maximum); on all others the
+  AMP envelope decides as usual.
+- Any gate or trigger of about 1 ms or longer and over 1 V works: 5 V and 10 V
+  modular gates and clock pulses included. For 2 ms after a trig the jack is not
+  read, so a bouncing edge does not play twice.
+- **The CONTROL INPUT pages** (SETTINGS > CONTROL INPUT 1 / 2: MODE and the
+  CV / pedal levels) are stock's settings for CV and expression-pedal
+  modulation. The trig ignores them: it works in every MODE, OFF included, and
+  needs no level set. Leave them as they are.
+- CONTROL IN 1 MOD and 2 MOD keep working when MODE is CV or EXPR, so one gate
+  can trigger a sound and modulate it.
 
 **Known limits**
 
 - Velocity is always 127.
-- A pedal plugged into a jack in EXPR mode triggers its track when pushed past
-  1 V.
+- A pedal plugged into a jack triggers its track when pushed past 1 V.
+- With only one jack patched, the empty one may pick up the patched jack's
+  signal and play its own track too (the two jacks are read one after the
+  other). If that happens, say so: it has not been seen on this build yet.
 - Whether the notes are recorded in live recording or sent out on MIDI follows
   what stock does for Overbridge notes; not checked.
-- Not yet run on hardware.
 
 ## 0021 - DG machines
 

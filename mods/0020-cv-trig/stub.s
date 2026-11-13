@@ -1,7 +1,7 @@
         | Mod 0020 - CTRL IN triggers a track.
         |
-        | Fixed: CTRL IN 1 plays T1 (pad 1, BD), CTRL IN 2 plays T2 (pad 2,
-        | SD), in any CONTROL INPUT mode but OFF, which leaves the port alone. A rising gate plays the
+        | Fixed, no settings: CTRL IN 1 plays T1 (pad 1, BD), CTRL IN 2 plays
+        | T2 (pad 2, SD), in any CONTROL INPUT mode, OFF included. A rising gate plays the
         | track as an Overbridge note does, note 60 (the track's own pitch) at
         | velocity 127, once a gate: the note-off follows len_ms later
         | (mod.toml), whatever the gate's length.
@@ -33,8 +33,6 @@
         .equ    ON_MV,          1000              | the gate: on above 1.0 V
         .equ    OFF_MV,         500               | off below 0.5 V
         .equ    PORTS,          2
-        .equ    PORT_MODE,      0x8000fd00        | + 40p: the port's mode, 0 OFF
-        .equ    PORT_REC,       40
 
         .equ    MIDI_SEM,       0x418fd874        | the MIDI task's semaphore
         .equ    SEM_SIGNAL,     0x40000d0a        | (sem), interrupts masked
@@ -118,14 +116,7 @@ cvt_isr:
         subq.l  #1,%d0
         move.b  %d0,S_HOLD(%a2,%d2.l)
         bra.s   8f
-3:      move.l  %d2,%d0                           | a port in mode OFF is not read:
-        mulu.w  #PORT_REC,%d0                     | an empty jack's input floats
-        lea     PORT_MODE,%a0                     | and ghosts the other jack's
-        tst.l   (%a0,%d0.l)                       | signal, as the converter
-        bne.s   31f                               | takes AN1 and AN2 in turn
-        clr.b   S_GATE(%a2,%d2.l)
-        bra.s   8f
-31:     lea     ADRSLT,%a0
+3:      lea     ADRSLT,%a0
         mvs.w   (%a0,%d2.l*2),%d0                 | signed, as adc_pedal_update
         asr.l   #3,%d0                            | reads it, and scaled as it is
         tst.b   S_GATE(%a2,%d2.l)

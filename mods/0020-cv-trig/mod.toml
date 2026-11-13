@@ -11,13 +11,11 @@ excludes = ["0017-ctrl-in-perf", "0011-batch-probe"]
 status  = "built"
 
 summary = """
-A gate into CTRL IN 1 plays T1 (pad 1, BD), into CTRL IN 2 T2 (pad 2, SD), in
-any CONTROL INPUT mode but OFF. A port in mode OFF is ignored: the converter
-takes AN1 and AN2 in turn, and an empty jack's floating input ghosts the other
-jack's signal, so a gate into CTRL IN 2 alone also played T1 (2026-11-13). Set
-an unused port to OFF. Both ports' thresholds come from CTRL IN 1's millivolt
-conversion: with CTRL IN 2's own, a gate into it never played its track on the
-unit (2026-11-13). Rising above 1.0 V is a note-on, note
+Fixed, no settings: a gate into CTRL IN 1 plays T1 (pad 1, BD), into CTRL IN 2
+T2 (pad 2, SD), in any CONTROL INPUT mode, OFF included (2026-11-13: a version
+that left ports in mode OFF alone played nothing on the unit, whose ports were
+OFF). Both ports' thresholds come from CTRL IN 1's millivolt conversion: with
+CTRL IN 2's own, a gate into it never played its track on the unit. Note
 60 (the track's own pitch) at velocity 127, once: one gate is one trig. The
 note-off follows len_ms later whatever the gate's length; falling below 0.5 V
 only re-arms the port, and for 2 ms after a trig the port is not read, so a
