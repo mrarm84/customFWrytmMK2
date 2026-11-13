@@ -10,6 +10,19 @@ excludes = ["0011-batch-probe"]
 status  = "built"
 
 summary = """
+LITE (rytm2_second, branch lite): the same machines, knobs, records and slots,
+rewritten for the audio interrupt's budget; see the stub's header. Sines from a
+4096-point Q15 table at 0x4B650010 (built in 128-point chunks after boot, the
+progress at 0x4B650000; silent until done), the polyBLEP saw's wrap from the
+phase add's overflow with the residual only at the wrap, no calls in any sample
+loop, DG PLUCK's f[k] carried into the next sample, DG SUPER's six sides summed
+raw and scaled once, and a voice whose envelope has died (DEC 0..100, or 127 at
+zero) or whose string has rung out skipped until the next trig. The code moved:
+dg_ampdec to cave28; dg_fixram, dg_mksin, fix_ids and batch 3's names to
+cave10 (.text7); the other names to cave15 (.text8). tools/dgbench.py measures
+it in an emulator: 2 to 3 times less per playing voice, about 1% of a block for
+a voice whose note has died. Not yet run on a unit.
+
 First batch of new machines over the hidden ones, a test build. DG SINE replaces
 BD TEST (44), DG SAW replaces SD TEST (45); both run on every track (no home
 track, every voice), after the public machines in the picker. They are digital:

@@ -383,6 +383,14 @@ track's FILTER and AMP, so those pages shape it as they shape UT NOISE.
   build with DEC above 100 now loop; turn DEC down to get the decay back.
 - **LEV** the level.
 
+**CPU (lite build).** A DG voice stops costing CPU once its own DEC decay has
+faded out (DEC 0..100), or once DG PLUCK's string has rung out; it starts again
+on the next trig. With DEC 127 the AMP envelope ends the note in the analog
+voice, which the machine cannot see, so the voice keeps computing until the
+track plays something else. On a busy pattern, set DEC to about the AMP decay
+on DG tracks you don't need to hold. Right after power-on the DG machines are
+silent for a few milliseconds while their sine table is built.
+
 **DG SINE** (TUN FIN SWD DEC / SWT DRV SUB LEV)
 
 - A pure sine, starting at phase 0 on every trig.

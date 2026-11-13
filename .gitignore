@@ -17,3 +17,7 @@ build/comp/
 # third-party tool fetched by make setup; stock firmware is supplied locally
 vendor/
 stock/*.syx
+
+# links to rytm-mods-src's venv and vendored tool, for building in place
+.venv
+vendor

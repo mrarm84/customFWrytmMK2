@@ -2356,7 +2356,7 @@ it is flash, so nothing writes it at run time; the question is only who calls it
 owner = "0021-dg-machines"
 addr  = 0x4011d288
 size  = 0x7d8
-note  = "All of cave25: DG SINE, DG SAW, their helpers, the 48 kHz increment table and the names."
+note  = "All of cave25: DG SINE, DG SAW, DG ORGAN, the shared passes (saw, sine, sub, level), dg_enter and the other helpers, and the 48 kHz increment table (lite)."
 
 # ------------------------------------------------ 0021-dg-machines
 
@@ -2768,7 +2768,7 @@ owner   = "0021-dg-machines"
 addr    = 0x4011de10
 size    = 0x204
 section = ".text2"
-note    = "All of cave26: DG PULSE, DG FM2, DG ORGAN, the RAM record fix, the FM ratio table, the id list and the batch's names."
+note    = "All of cave26: DG PULSE and DG FM2 (lite)."
 
 # Machine 47's dispatch entry becomes dg_fm2.
 [[patch]]
@@ -3544,7 +3544,7 @@ owner   = "0021-dg-machines"
 addr    = 0x4011daf2
 size    = 0x2cc
 section = ".text3"
-note    = "DG CHORD, DG SUPER, the shape and saw helpers."
+note    = "DG CHORD, the pluck's excitation and DG SUPER (lite)."
 
 # ---------------------------------------------------------------------- cave29
 
@@ -3571,7 +3571,7 @@ owner   = "0021-dg-machines"
 addr    = 0x4011b278
 size    = 0x2bc
 section = ".text5"
-note    = "DG PLUCK."
+note    = "DG PLUCK (lite)."
 
 # ---------------------------------------------------------------------- cave30
 
@@ -3598,7 +3598,7 @@ owner   = "0021-dg-machines"
 addr    = 0x40114460
 size    = 0x314
 section = ".text6"
-note    = "DG CHIP, and batch 3's chord and detune tables, seeds and names."
+note    = "DG CHIP, the chord, detune, spacing, order and FM ratio tables and DG SUPER's seeds (lite)."
 
 # ------------------------------------------------ 0021 batch 3
 
@@ -4126,7 +4126,24 @@ owner   = "0021-dg-machines"
 addr    = 0x4011e898
 size    = 0x140
 section = ".text4"
-note    = "The DRV and NOI passes the batch-3 knobs share."
+note    = "The DRV and NOI passes the batch-3 knobs share, and dg_ampdec (lite)."
+
+# lite: 0021's run-once code (dg_fixram, dg_mksin, the id list) and batch 3's
+# names, moved out of cave25 to give the inlined passes room.
+[[cave]]
+owner   = "0021-dg-machines"
+addr    = 0x40025c00
+size    = 0x228
+section = ".text7"
+note    = "lite: dg_fixram, dg_mksin (SIN_TAB in SDRAM, once after boot), fix_ids, and batch 3's names."
+
+# lite: the names of 0021's batches 1 and 2, moved out of cave25.
+[[cave]]
+owner   = "0021-dg-machines"
+addr    = 0x400a7e58
+size    = 0x1a8
+section = ".text8"
+note    = "lite: the names of DG SINE, SAW, PULSE, FM2 and ORGAN and their knobs."
 
 # Record 447: machine 44, sound index 16, SUB: 0..0x7f00, default 0x0.
 [[patch]]

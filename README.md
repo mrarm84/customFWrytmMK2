@@ -1,4 +1,58 @@
 
+# rytm-mods (lite)
+
+**Branch `lite` of rytm2_second.** The whole of rytm-mods-src as of 2026-11-13
+(2c6040a and its uncommitted working tree), with mod 0021's DG machines
+rewritten to cost far less of the audio interrupt. Same nine machines, same
+knobs, records, slots and sound (see below); the other mods are unchanged.
+
+| DG machine, 8 voices | before, plain / busy | lite, plain / busy | a voice whose note has died |
+|---|---|---|---|
+| SINE  | 12.4% / 25.6% | 5.2% / 12.5% | 12.6% -> 1.0% |
+| SAW   |  9.4% / 30.6% | 5.3% / 16.9% |  9.6% -> 1.0% |
+| PULSE | 12.8% / 20.8% | 7.2% / 10.1% | 13.0% -> 1.0% |
+| FM2   | 20.2% / 20.4% | 7.9% /  8.1% | 20.4% -> 1.0% |
+| ORGAN | 35.1% / 35.1% | 11.7% / 11.7% | 35.3% -> 1.0% |
+| CHORD | 26.1% / 32.2% | 11.9% / 16.4% | 26.2% -> 1.0% |
+| SUPER | 39.3% / 53.3% | 18.3% / 25.5% | 39.5% -> 1.0% |
+| PLUCK | 19.3% / 27.5% | 13.0% / 17.4% | 18.0% -> 1.0% |
+| CHIP  | 12.4% / 12.8% | 6.9% /  7.4% | 12.6% -> 1.0% |
+
+Share of one 32-frame audio block (0.67 ms at 266 MHz) the machine takes with
+all 8 voices on it, from `tools/dgbench.py`: the built image run in an emulator
+(Unicorn's ColdFire V4e) as the interrupt calls it, each instruction weighted
+by a rough V4e cost. An estimate for comparing builds, not a reading from a
+unit. "plain" is the machine at its defaults, "busy" with every optional pass
+on (DRV, SUB, NOI ...); "died" is DEC 20 after the note has faded.
+
+How (details in `mods/0021-dg-machines/stub.s`'s header):
+
+- sines from a 4096-point table in the SDRAM 0022 freed, built from the old
+  polynomial in a few blocks after boot (machines silent until it is done);
+- a polyBLEP saw whose wrap is the phase add's overflow, the correction only
+  at the two samples around each wrap, and no call inside any sample loop;
+- DG PLUCK reuses each sample's filter output and string taps in the next;
+- a voice whose DG envelope has died (DEC 0..100, or 127 after it reached
+  zero), or whose string has rung out, only clears its buffer until the next
+  trig. **With DEC 127 (hold, the default) the AMP envelope ends the note in
+  the voice hardware, which the CPU cannot see, so such a voice keeps
+  computing after it is inaudible.** Setting DEC to roughly the AMP decay lets
+  a voice go idle when its note ends.
+
+Same sound, checked by rendering every machine at C3, C4 and C5, plain and busy,
+with a retrig, from both images (`dgbench.py render` / `diff`): CHORD, PLUCK,
+SAW and SUPER at their defaults are bit-identical; the saw and pulse family
+otherwise differ by rounding, -63 to -110 dB; SINE, ORGAN and FM2 by the
+table's phase step, -50 to -61 dB, with the same worst harmonic and spur levels
+as before (the old polynomial's own error is that large).
+
+    pip install unicorn numpy            # once, in a Linux or WSL Python
+    python3 tools/dgbench.py bench  build/mainos_<tag>.bin build/obj/0021-dg-machines.elf
+    python3 tools/dgbench.py render build/mainos_<tag>.bin build/obj/0021-dg-machines.elf OUT/
+    python3 tools/dgbench.py diff   OUT_A/ OUT_B/
+
+Not yet run on a unit. The build is the same as below (`make verify`).
+
 # rytm-mods
 
 -Public copy of MrScruff's firmware modifications for the Analog Rytm MKII, redistributed with permission. Released as-is, responses to issues should not be expected.
@@ -94,7 +148,7 @@ still record what those probes established.
 | 0015 | ENV RESET reaches AMP and AMP+FILT | hardware-verified |
 | 0019 | SRR on the REVERB page with knob-press modes; DIST filter | built |
 | 0020 | A gate into CTRL IN plays a track | built |
-| 0021 | New digital machines in the hidden slots: DG SINE, SAW, PULSE, FM2, ORGAN, CHORD, SUPER, PLUCK, CHIP | built |
+| 0021 | New digital machines in the hidden slots: DG SINE, SAW, PULSE, FM2, ORGAN, CHORD, SUPER, PLUCK, CHIP (lite: the CPU-light rewrite) | built |
 | 0022 | Delay ring halved to 2 MB, freeing 2 MB of RAM | built |
 
 Status ladder: `re-only` -> `built` -> `hardware-verified`, plus `retracted`.
