@@ -8,23 +8,28 @@ The meter build writes four words over voice slot 7 (USB channel 10), each
 all in DMA timer 0 ticks (about 130 MHz). Shares are of the measured interval,
 so the timer's exact rate does not matter.
 
-The Rytm's USB CONFIG must be the mode with 12 inputs (see tools/comp/rig.py).
+The Rytm's USB CONFIG must be OVERBRIDGE, the mode with 12 inputs. On Windows
+those 12 come through Overbridge's ASIO driver, which this script enables in
+sounddevice (SD_ENABLE_ASIO); the 2-input "Elektron Analog Rytm mkII" WDM
+devices carry MAIN only.
 
-    isr_meter.py                  one reading, 5 s
+    isr_meter.py --list           the input devices with 12 or more inputs
+    isr_meter.py                  one reading, 5 s, from the first such device
+                                  whose name mentions Rytm or Overbridge
     isr_meter.py --seconds 20
+    isr_meter.py --device 41      or a part of its name
     isr_meter.py --live           a line a second until Ctrl+C: turn effects on
                                   and off and watch the share move
 """
 import argparse
+import os
 import sys
 import time
-from pathlib import Path
 
-import numpy as np
-import sounddevice as sd
+os.environ.setdefault("SD_ENABLE_ASIO", "1")   # before sounddevice loads PortAudio
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "comp"))
-import rig  # noqa: E402
+import numpy as np  # noqa: E402
+import sounddevice as sd  # noqa: E402
 
 FS = 48000
 BLOCK = 32
@@ -68,13 +73,50 @@ def report(d):
     print(f"  headroom (100 - p99 of whole)  {100 - np.percentile(pct(d['run'], iv), 99):.2f}%")
 
 
+def wide_inputs():
+    out = []
+    for i, d in enumerate(sd.query_devices()):
+        if d["max_input_channels"] >= 12:
+            api = sd.query_hostapis(d["hostapi"])["name"]
+            out.append((i, d["name"], d["max_input_channels"], api))
+    return out
+
+
+def pick_device(want):
+    devs = wide_inputs()
+    if want is not None:
+        if want.isdigit():
+            return int(want)
+        for i, name, _, _ in devs:
+            if want.lower() in name.lower():
+                return i
+        raise SystemExit(f"no input device with 12+ inputs matching {want!r}; try --list")
+    for i, name, _, _ in devs:
+        if "rytm" in name.lower() or "overbridge" in name.lower():
+            return i
+    lines = ["no input device with 12+ inputs named Rytm or Overbridge.",
+             "Rytm: SETTINGS > SYSTEM > USB CONFIG > OVERBRIDGE; on Windows the",
+             "Overbridge driver's ASIO device carries the 12 channels.",
+             "devices with 12+ inputs:"]
+    lines += [f"  [{i}] {n} - {c} in ({api})" for i, n, c, api in devs] or ["  none"]
+    lines.append("pick one with --device N if it is the Rytm under another name.")
+    raise SystemExit("\n".join(lines))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seconds", type=float, default=5.0)
     ap.add_argument("--live", action="store_true")
+    ap.add_argument("--device", default=None, help="index or part of the name")
+    ap.add_argument("--list", action="store_true")
     a = ap.parse_args()
-    dev = rig.find_device()
+    if a.list:
+        for i, n, c, api in wide_inputs():
+            print(f"[{i}] {n} - {c} in ({api})")
+        return
+    dev = pick_device(a.device)
+    print(f"reading [{dev}] {sd.query_devices(dev)['name']}")
     st = sd.InputStream(samplerate=FS, channels=12, dtype="int32", device=dev, blocksize=1024)
     st.start()
     try:
