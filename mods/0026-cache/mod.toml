@@ -5,7 +5,7 @@ title   = "Data cache over the uncached SDRAM (ACR1, write-through): an experime
 enabled = false
 
 # re-only | built | hardware-verified | retracted
-status  = "built"
+status  = "retracted"
 
 summary = """
 An experiment, off by default. MAIN OS caches only 0x40000000..0x47ffffff
@@ -22,6 +22,14 @@ reads), is flushed by stock (cpushl dc) before each transfer. The delay moves
 its ring by eDMA 30/42 to and from SRAM and never reads it with the CPU.
 Things to try on a unit: sample playback, loading samples and projects from
 +Drive, sampling, the delay and reverb, the DG machines.
+
+RETRACTED (unit, 2026-11-13, region 1, build 26): glitches and menus opening by
+themselves, so some DMA the UI depends on writes into 0x4B.. behind the cache
+(likely the buffers around 0x4B82....). Region 2 was not flashed. The meter
+read during it, on a pattern not known to match the earlier one: machines 8.9%
+(17% before), REVERB 2 1.7% (4.4%), the whole 83.8% (95.8%), 0x4011c64c alone
+15.2%. ACR1 cannot be narrower than 16 MB, so the gain has to come from moving
+the hot data (0021's tables, 0019's chorus) into cached RAM instead.
 """
 
 [sources]
