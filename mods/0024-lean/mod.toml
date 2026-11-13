@@ -1,0 +1,46 @@
+[mod]
+id      = "0024-lean"
+title   = "Lean interrupt: parameter smoothing at half rate; performance locks and CV modulation out"
+
+enabled = true
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+Audio interrupt time back for effects and machines. Two parts, each a param.
+
+half: the parameter smoothing (the one-pole glide of all 572 words of the
+engine's working array, 0x40120cba) and the per-track interpolation (13 x 21
+msac passes, 0x40120e0c) run every other block. On the blocks between, the
+working array is restored from a copy taken after them on the last computing
+block (and before CTRL IN, the routes, the performance locks and the LFOs, which
+modify it in place and would otherwise add twice). The glide's coefficients are
+squared to keep its time: 0.03 / 0.97 a block becomes 0.0591 / 0.9409 every
+other block, so knobs still settle in about 22 ms; parameters now step every
+1.33 ms instead of 0.67 ms. Discrete words the loop at 0x40120ce8 copies in
+take effect up to two blocks later. The copy, 1144 B, lives in the SDRAM 0022
+freed, at 0x4B680000 (between 0021's tables, which end by 0x4B653080, and
+0019's chorus at 0x4B700000).
+
+cut: performance mode's 48 locks and CONTROL IN 1/2 MOD are no longer applied:
+adc_pedal_update is not called and the code from 0x40120f08 to 0x40120fa6 (the
+two CTRL IN route calls and the performance locks) is jumped over. PERF and the
+CONTROL INPUT / CONTROL IN MOD pages stay in the menus and do nothing. 0020's CV
+trig reads the converter itself and keeps working. Velocity and aftertouch
+routes are untouched.
+"""
+
+[sources]
+stub = "stub.s"
+
+[params]
+# 1 runs the smoothing and the interpolation every other block.
+half = 1
+# 1 drops performance locks and CV modulation from the interrupt.
+cut = 1
+
+[requires]
+shared = false
+mods   = ["0022-fx-ram"]
+symbols = []

@@ -4873,3 +4873,83 @@ size    = 4
 expect  = "4024f9da"
 from_symbol = "txt_r2oct_s"
 
+
+# ---------------------------------------------------------------- 0024-lean
+
+[[cave]]
+owner = "0024-lean"
+addr  = 0x401b70d8
+size  = 0xd0
+note  = "In cave22: the half-rate smoothing's three detour bodies, the 1144 B copy routine, the block parity and a scratch word. The copy itself is in the SDRAM 0022 freed, at 0x4B680000."
+
+# The smoothing loop's set-up: `lea 0x8000f774,%a4`, re-emitted on computing blocks;
+# on the others the stub goes on at 0x40120ce4 with a0 = 0x8000e57c, as the loop
+# leaves it. Nothing branches into 0x40120c90..0x40120c93.
+[[detour]]
+owner  = "0024-lean"
+addr   = 0x40120c8e
+size   = 6
+expect = "49f98000f774"
+entry  = "lean_smooth"
+gate   = "half"
+
+# The interpolation's set-up: `lea 0x8000f7a8,%a0`, re-emitted on computing blocks;
+# on the others the working array is restored and the stub goes on at 0x40120e32.
+# Nothing branches into 0x40120dec..0x40120def.
+[[detour]]
+owner  = "0024-lean"
+addr   = 0x40120dea
+size   = 6
+expect = "41f98000f7a8"
+entry  = "lean_interp"
+gate   = "half"
+
+# `movel #0x8000f7f6,%d7`, after the scene locks and before CTRL IN, the routes, the
+# performance locks and the LFOs: the copy is taken here. Re-emitted.
+[[detour]]
+owner  = "0024-lean"
+addr   = 0x40120e6e
+size   = 6
+expect = "2e3c8000f7f6"
+entry  = "lean_snap"
+gate   = "half"
+
+# The glide's coefficients, squared for every other block: d6 0.97 -> 0.9409
+# (`movel #0x7c290000,%d6`'s immediate) and d7 0.03 -> 0.0591 (`movel
+# #0x03d70000,%d7`'s), complementary: 0x786f + 0x0791 = 0x8000.
+[[patch]]
+owner   = "0024-lean"
+addr    = 0x40120c7e
+size    = 4
+expect  = "7c290000"
+replace = "786f0000"
+gate    = "half"
+
+[[patch]]
+owner   = "0024-lean"
+addr    = 0x40120c9e
+size    = 4
+expect  = "03d70000"
+replace = "07910000"
+gate    = "half"
+
+# adc_pedal_update's call, `jsr 0x4013f1c8`, becomes `bras +4` over its address;
+# the three arguments are still pushed and popped (`lea %sp@(12),%sp`).
+[[patch]]
+owner   = "0024-lean"
+addr    = 0x40120e94
+size    = 2
+expect  = "4eb9"
+replace = "6004"
+gate    = "cut"
+
+# After the velocity/aftertouch loop: `bra.w 0x40120fa8` over the two CTRL IN MOD
+# route calls and the 48 performance locks. Only branches from inside the skipped
+# code land in it.
+[[patch]]
+owner   = "0024-lean"
+addr    = 0x40120f08
+size    = 4
+expect  = "20398000"
+replace = "6000009e"
+gate    = "cut"
