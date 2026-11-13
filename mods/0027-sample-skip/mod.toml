@@ -26,6 +26,11 @@ dispatch-table entry is pointed at DISABLE. The routine's helpers after it
 [sources]
 stub = "stub.s"
 
+[params]
+# 1 records, per block, which voices were skipped and why not, at 0x4011438c
+# (the last long of cave32), for the meter (0023) to send. Keep at 0 to ship.
+dbg = 0
+
 [requires]
 shared = false
 symbols = []

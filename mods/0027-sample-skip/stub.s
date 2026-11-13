@@ -32,6 +32,23 @@
         .equ    V_ADV,          32                | the block's integer advance
         .equ    V_STATE,        44                | 12 longs of filter state
 
+        | dbg: the block's per-voice result at SK_DBG, the last long of cave32:
+        | bit v skipped, 8+v the filter state not zero, 16+v an input sample
+        | not zero, 24+v backwards. Cleared at voice 0. The meter (0023)
+        | sends it as words 0x68 (bits 0..15) and 0x69 (16..31).
+        .equ    SK_DBG,         0x4011438c
+        .equ    SP_VOICE,       88                | 0x4011c64c's frame: the voice
+
+        .macro  dbgbit base
+        .if     P_DBG
+        move.l  SP_VOICE(%sp),%d7
+        add.l   #ase,%d7
+        move.l  SK_DBG,%d6
+        bset    %d7,%d6
+        move.l  %d6,SK_DBG
+        .endif
+        .endm
+
         .text
 
         | ------------------------------------------------------------------
@@ -41,10 +58,16 @@
         | ------------------------------------------------------------------
         .align  2
 sk_res:
+        .if     P_DBG
+        tst.l   SP_VOICE(%sp)
+        bne.s   0f
+        clr.l   SK_DBG
+0:
+        .endif
         lea     V_STATE(%a3),%a1                  | the filter state: all zero?
         moveq   #12-1,%d0
 1:      tst.l   (%a1)+
-        bne.s   8f
+        bne.s   5f
         subq.l  #1,%d0
         bpl.s   1b
         move.l  V_RATE(%a3),%d5
@@ -58,13 +81,13 @@ sk_res:
         moveq   #0,%d0
         addx.l  %d0,%d2                           | the carry into hi
         tst.l   %d2
-        bmi.s   8f                                | backwards: leave it to stock
+        bmi.s   7f                                | backwards: leave it to stock
         move.l  %a0,%a1                           | samples 0 .. hi+4, zero?
         move.l  %d2,%d0
         addq.l  #5,%d0
         lsr.l   #1,%d0                            | in pairs
 2:      tst.l   (%a1)+
-        bne.s   8f
+        bne.s   6f
         subq.l  #1,%d0
         bne.s   2b
         move.l  %d3,V_PHASE(%a3)                  | silence: the loop's state
@@ -72,7 +95,13 @@ sk_res:
         add.l   %d2,V_POS(%a3)
         moveq   #1,%d0
         move.b  %d0,sk_flag
+        dbgbit  0
         jmp     RES_SKIP
+5:      dbgbit  8
+        bra.s   8f
+6:      dbgbit  16
+        bra.s   8f
+7:      dbgbit  24
 8:      clr.b   sk_flag
         move.l  V_RATE(%a3),%d5                   | displaced
         move.l  %d5,%d2                           | displaced
