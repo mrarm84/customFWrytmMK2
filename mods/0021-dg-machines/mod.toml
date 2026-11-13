@@ -1,0 +1,100 @@
+[mod]
+id      = "0021-dg-machines"
+title   = "New digital machines in the hidden slots: DG SINE, SAW, PULSE, FM2, ORGAN, CHORD, SUPER, PLUCK, CHIP"
+
+enabled = true
+
+excludes = ["0011-batch-probe"]
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+First batch of new machines over the hidden ones, a test build. DG SINE replaces
+BD TEST (44), DG SAW replaces SD TEST (45); both run on every track (no home
+track, every voice), after the public machines in the picker. They are digital:
+the circuit is reset on the trig, as UT IMPULSE does, and the machine writes the
+voice's waveform stream, so FILTER and AMP shape it.
+
+TUN 0..127 in semitones with 64 the base, FIN -64..+63 cents; the note is the
+trig's pitch + (TUN - 64) + FIN, A4 440 Hz at 48 kHz, so TUN 64 at the track's
+own pitch is C4. DEC 127 (the default) holds, leaving the AMP envelope to shape
+the note; below it an exponential decay from 1.4 ms to 30 s half-life.
+
+DG SINE: TUN FIN SWD DEC SWT DRV - LEV. A sine from phase 0 at the trig; SWD a
+pitch sweep up to +63.5 semitones falling away at SWT; DRV a soft-clip drive, 0
+off. DG SAW: TUN FIN DET DEC SUB - - LEV. A polyBLEP saw, a second saw up to 50
+cents above it from DET (0 leaves one), SUB a sine an octave below, 127 half and
+half.
+
+The code takes cave25, the SD/RS/CY/CB TEST routines; their dispatch entries
+point at DISABLE. Records 408..414 and 416..421 (BD and SD TEST's) are reshaped,
+modflags 0x600 so locks and LFO reach them; no CC or NRPN. A kit saved with
+these machines loads as DISABLE on stock firmware.
+
+Batch 2: DG PULSE (46, was RS TEST): TUN FIN PW DEC PWD PWR SUB LEV, a pulse as
+the difference of two polyBLEP saws PW apart, a triangle PWM at PWR. DG FM2 (47,
+was BT TEST): TUN FIN RAT DEC FMA FMD FB LEV, a sine carrier phase-modulated by a
+sine at RAT's ratio (16 steps, 1/2..16), index FMA falling at FMD, modulator
+feedback FB. DG ORGAN (48, was LT TEST): TUN FIN D16 DEC D8 D5 D4 LEV, four sine
+drawbars at 1/2, 1, 3/2 and 2 times the note. FM2 and ORGAN take records from LT,
+MT and HH TEST as well (430..445). cave26, the MT and BT TEST routines, holds
+PULSE and FM2; 49's entry points at DISABLE.
+
+The RAM parameter records (param_info, built at boot) are not the ROM ones: stock
+gives SD TEST's WAV and FRO (420, 421) list flags and a label formatter there, so
+DET and SUB ran 0..7 and read ERR past the list (hardware, 2026-11-12). dg_fixram,
+on the first call of any DG machine after start-up, copies record 410's plain
+0..127 flags, range and formatters over every id 0021 uses and sets each one's
+top (+8) from its ROM max (RAT: 15).
+
+Hardware 2026-11-12: DG SINE and DG SAW play; TUN, FIN, DEC, LEV worked.
+Batch 3: DG CHORD (49, was MT TEST): TUN FIN CHD DEC INV DET - LEV, four polyBLEP
+saws on one of 16 chords, INV raising the lowest notes an octave, DET spreading
+them up to 25 cents. DG SUPER (51, was CY TEST): TUN FIN DET DEC MIX - - LEV, seven
+saws at the JP-8000's relative spacing (DET squared, about +-1.9 semitones at the
+edges), MIX the six sides against the centre, phases free-running from a spread
+seed. DG PLUCK (52, was CB TEST): TUN FIN BRT DEC - - - LEV, Karplus-Strong: a
+period of differenced, BRT-low-passed noise into a 4096-sample line per voice,
+recirculating through the linear-phase low-pass [b/4, 1-b/2, b/4] read by linear
+interpolation at the exact period, so the loop is the period (a model of the code:
+within 0.35 cents from C2 to C7); DEC a loss a period scaled by the period, so the
+time constant (1.3 ms .. about a minute) is pitch-independent. The code takes the
+BD TEST (cave27, .text3) and BT IMPROVED (cave29, .text5) routines, tables and
+names the HH TEST routine (cave30, .text6); entries 34 and 50 point at DISABLE.
+Records: 415, 449..455 (free test ones; 0013 and 0019 hold 446, 456..460) and
+BT IMPROVED's and FUNC GEN's 398..407, both machines staying hidden. DG SUPER's
+extra phases and DG PLUCK's state (+0 write index, +4 samples left to excite, +8
+seed, +12 last noise, +16 its low-pass) are at 0x4B600000 + 256v, the strings at
+0x4B610000 + 16 KB v, in the SDRAM 0022 freed (zeroed by the delay's start-up
+clear). DG WAVE, planned with them, needs five more records than are free.
+Hardware 2026-11-12: all eight machines play; the empty knobs were the complaint.
+Filled: SINE SUB (447, via dg_finish), SAW DRV NOI (448, 390), CHORD DRV (391),
+SUPER DRV SUB (392, 393), PLUCK PIK LEN DRV (394..396): records 447 and 448 and
+RS FM 2's 390..396 (machine 42 stays hidden; 397 is left). DRV is dg_drive over
+the block (dg_drvpass) and NOI LCG noise (dg_noipass, seed at the SDRAM state
++32), both in the LT TEST routine (cave28, .text4). PIK subtracts the pluck d =
+PIK/256 periods earlier (a comb; the pluck kept at 0x4B630000 + 16 KB v), LEN
+scales the pluck to (LEN + 8)/72 periods; the pluck itself moved to plk_excite
+in .text3 to fit.
+DG CHIP (50, was HH TEST, its code in that routine's cave30): TUN FIN WAV DEC ARP
+SPD SWP LEV, records BD FM 2's 382..389 (machine 41 stays hidden). WAV 0..3 a
+polyBLEP pulse at 1/8 1/4 1/2 3/4, 4 the 32-step triangle, 5/6 the 15-bit LFSR
+(tap 1 or 6) clocked at 8 times the note; the level steps in 16 (env & 0x7c000000);
+ARP cycles chord_tab[ARP - 1] every 6 + (127 - SPD)^2 / 170 blocks; SWP adds
+(SWP - 64) * 67 / 65536 semitones a block, held to +-60. fix_ids moved to .text4
+and the chip's names to .text to fit.
+Hardware 2026-11-12: all nine machines and the filled knobs work.
+DEC loop: dg_gain (and DG CHIP's level) go through dg_ampdec (.text5): DEC 0..100
+scaled by 1.262 onto dg_decay's 0..126, 101..126 dg_decay at knob 10 + 2(DEC - 101)
+restarting at ENV_FULL below 2^24 (-36 dB), a pulse every 11 ms to ~1 s; 127 holds.
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+# DG SUPER and DG PLUCK use the SDRAM 0022 takes from the delay.
+mods   = ["0022-fx-ram"]
+symbols = []

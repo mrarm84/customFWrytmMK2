@@ -1,0 +1,71 @@
+[mod]
+id      = "0019-reverb-srr"
+title   = "A phaser on the REVERB page, a REVERB 2 page of crusher and effects, and a filter on the DISTORTION page"
+
+enabled = true
+
+# The removed 0006 held the same audio hook (0x401213a0), cave4, cave3 and cave5;
+# the removed 0008 held param_value_text's formatter call (0x400a8648).
+
+# re-only | built | hardware-verified | retracted
+# The SRR parameter alone (encoder G, REV mode) was hardware-verified 2026-11-11;
+# the DIST filter 2026-11-12 ("works perfect"); the knob-press modes and the DLY
+# mode are built, not yet run.
+status  = "built"
+
+summary = """
+PHS, a phaser, on the REVERB page's encoder G (was SRR): FX word 29, which
+stock's kit save and load carry but no record names; record 460 (hidden CB TEST's
+CB_VCA) in the reverb records' shape, so it is saved with the kit, p-lockable and
+on the FX LFO. The knob is the rate, 0 off, 0.03..8 Hz; four allpasses on the
+mono sum at 24 kHz, corner swept 200 Hz..4.5 kHz, feedback 0.7, half dry and half
+wet. The press cycles OFF (label PH-), on the reverb's output (PHS), on the
+delay's input (PHS.); device-wide (cfg byte 8).
+
+DIST FILTER on the DISTORTION page's empty encoders D, E, F: FRQ, RES, TYP. A
+biquad (0013's RBJ sections and tables) over the digital PRE signal that feeds
+the analog distortion and compressor - with DAC SUM on, every voice and the PRE
+returns. TYP OFF, LP2, BP, HP2, BS, popped up with stock TYP's names; FRQ
+stock's semitone scale; RES the Q. FX words 38..40, which the engine uploads
+with locks and LFO but stock's kit save does not carry: kept in the stored FX
+block's unused +0x50..+0x53 with a tag. Records 459, 456, 458 (hidden CB TEST
+and CY TEST machines'). SETTINGS > AUDIO ROUTING > DIST FILTER turns it off
+device-wide.
+
+REVERB 2 (page 14, the REVERB view's page vector grown to {9, 14}; 0013's
+page_info answers it): OCT, SRR, HIS, CHR, DEP, CMB, CMK, RNG. BIT (record 446)
+is removed: HH_VCA's record never turned as a plain knob; 446 is stock again.
+- All eight are records 341 and 334..340 (BD HARD 2's, kind REVERB, words 49 and
+  42..48, modflags 0), not FX words (all 42 are taken), so not lockable;
+  FxParameterSet's get (0x401dcc18) and write (0x401dcc20) go to fxs_get/fxs_put,
+  which keep them in rv2_val. The kit's FX save writes seven, tagged 0xaa, to the
+  stored block's +0x64..+0x6b (zeroed by that save, never read by its load); OCT
+  goes in DIST TYP's stored byte bits 3..7 and FRQ's and RES's bit 7.
+- Each knob's press moves its effect between the reverb's output and the delay's
+  input (a dot on the label marks the delay): SRR its own srr_mode (cfg byte 6;
+  FUNC + hold the momentary ALL), CHR and DEP the chorus (cfg byte 7, 1 REV, 2
+  DLY), HIS, CMB, CMK, RNG, OCT a bit each in cfg byte 9.
+- CHR the chorus rate (0 off), DEP its sweep (to 16 ms around 7 ms), 60 % wet.
+- rv2_go, once on the reverb's output and once on the delay's input, each with
+  its share of cfg byte 9: CMB a comb (512 * 2^(-CMB/16) pairs at 24 kHz; CMK its
+  feedback to 0.93), RNG a ring modulator (20 Hz..4.8 kHz), OCT an octave down
+  (the 480 Hz-lowpassed mono sum times a flip-flop turned at every other zero
+  crossing), HIS hiss to -42 dBFS; at 16 bits while any is on there. Each costs
+  nothing at 0.
+The code is in cave31 (BD FM 2's routine; machine 41 points at DISABLE) and the
+encoder-press handler in cave8 (freed by 0012), the chorus in cave10. The chorus and comb lines are in
+the SDRAM 0022 frees (0x4B700000..0x4B7047FF).
+
+The passes run on the audio interrupt's main path; the alternate path taken
+while 0x8000e578 is set (0x4011fd9c) renders the reverb SRR, the filter and the
+momentary unprocessed (the DLY SRR, inside the effects routine, runs on both).
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+# The chorus and comb lines live in the SDRAM 0022 frees.
+mods   = ["0022-fx-ram"]
+symbols = ["mem_new", "std_string_from_cstr", "std_string_dtor", "text_draw", "is_key_held"]

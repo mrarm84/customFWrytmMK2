@@ -1,0 +1,35 @@
+[mod]
+id      = "0020-cv-trig"
+title   = "CTRL IN triggers a track"
+
+enabled = true
+
+# 0017 holds the same two detours (0x40120e9e, 0x40131962) and cave19.
+excludes = ["0017-ctrl-in-perf", "0011-batch-probe"]
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+Fixed, no settings: a gate into CTRL IN 1 plays T1 (pad 1, BD), into CTRL IN 2
+T5 (pad 5, BT), in any CONTROL INPUT mode. Rising above 1.0 V is a note-on, note
+60 (the track's own pitch) at velocity 127; falling below 0.5 V the note-off, so
+the gate's length is the note's. The thresholds are turned into each port's raw
+units by stock's millivolt conversion (0x4013f3fa), as its CV levels are.
+Stock's CONTROL IN MOD routes keep working on the same port. (The TRIG DEST menu
+item is removed.)
+
+The edges are found in the audio interrupt just after adc_pedal_update
+(0x40120e9e, every 0.67 ms) on the raw converter result, not the smoothed value,
+which lags by tens of milliseconds. Each edge signals the MIDI task's semaphore;
+the task plays it at the top of its loop (0x40082d12) through stock's note_on and
+note_off, as Overbridge's notes do (source 2), so the engine's note lists are only
+touched from the task that already touches them for MIDI.
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+symbols = []
