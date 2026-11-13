@@ -80,6 +80,85 @@ against the built image (pitch per block, registers kept); not yet on a unit.
 
 Not yet run on a unit. The build is the same as below (`make verify`).
 
+## Lite, 2026-11-13: CV trig, a leaner interrupt, PERF push, the meter
+
+Branches on top of `lite` (9aa3b60), each a step that can be gone back to. Every
+.syx built is a commit, filed in `../rytm_syx_builds` as
+`NN_<branch>_<commit>_<what>.syx` with its hash in `SHA256.txt` there.
+
+| build | branch | what |
+|---|---|---|
+| 13..15 | `lite-cvfix` | 0020 CV trig: one gate one trig, CTRL IN 1 -> T1, CTRL IN 2 -> T2, every CONTROL INPUT mode, no settings |
+| 21 | `lite-lean` | + 0024 `cut`: performance locks and CV modulation out of the interrupt (~1.4%) |
+| 25 | `lite-perfpush` | + 0025: PERF pads push their track (FRQ -5%, RES/DEL/REV +5%, a random slow LFO), pads orange |
+| 12, 17..24 | | measuring builds with the 0023 meter; not for playing |
+
+**0020 CV trig.** A rising gate above 1 V plays the track once; the note-off
+follows 50 ms later (`len_ms`) whatever the gate's length, the falling edge
+below 0.5 V only re-arms, and the port is not read for 2 ms after a trig. Both
+ports use CTRL IN 1's millivolt conversion (CTRL IN 2's own never let a gate
+through on the unit). An empty jack may ghost the other one, as the converter
+takes AN1 and AN2 in turn; not seen on this build yet. Manual: `docs/MANUAL.md`.
+
+**0024 lean.** `cut` (on): adc_pedal_update, the two CTRL IN MOD route calls
+and the 48 performance locks are no longer run. `half` (off): parameter
+smoothing and interpolation every other block, restoring the working array from
+a copy in between. Measured on the unit it gained nothing, the copy costing
+about 2.7% to restore and 2% to take wherever it lives outside on-chip SRAM, so
+it is off until the copy can live in SRAM or a design needs none.
+
+**0025 perf push.** In PERF a plain pad press edits pad N's track through the
+sound set's delta handler, as knob turns: FRQ -6.4 steps, RES, DEL and REV
++6.4, and a random LFO with every knob in the first quarter of its range (SPD
+1..16, the six slowest MUL, any WAV, FRE/TRG, SPH 0..31, FAD 0..16, DEP 1..32,
+DST one of 0004's sixteen). Saved with the kit; RELOAD undoes it. Not yet run
+on a unit.
+
+**0023 meter and `tools/isr_meter.py`.** DMA timer 0 at the audio interrupt's
+entry, exit and nineteen points between, streamed over USB channel 10 (USB
+CONFIG OVERBRIDGE; on Windows the Overbridge driver's ASIO device, which the
+script enables). `py tools/isr_meter.py [--seconds N | --live]`. Off by default:
+build with `--mods ... 0023-isr-meter`. It needs 0024's `half` off (they share
+caves).
+
+**What the meter found** (build 23, CHORD + DAC SUM + DIST FILTER + REVERB 2
+effects + delay and reverb, Overbridge connected): the interrupt at 96% median,
+99.7% peak, sections summing to the whole:
+
+| section | share |
+|---|---|
+| `0x4011c64c` + envelopes, pan/mute, master volume | 24.5% (not the sample layer: unchanged with every sample off) |
+| stock delay + reverb | 18.9% |
+| machines (CHORD) | 15-17% |
+| entry, trigs, voice set-up | 8.5% |
+| parameter smoothing + interpolation | 5.3% |
+| DAC SUM | 4.7% |
+| REVERB 2 / phaser / DIST FILTER | 4.4% |
+| USB send (Overbridge, only while connected) | 3.9% |
+| LFOs | 3.1% |
+
+0013's burn test (2026-10-06) showed the UI lagging from +0.5% of added
+interrupt load, so every percent counts. Build 24 splits the 24.5% section
+further; not yet read.
+
+**Memory and caching.** The data cache covers only 0x40000000..0x47ffffff
+(ACR0 0x4007e020; CACR's default is cache-inhibited). 0022's SDRAM
+(0x4B6.., 0x4B7..), where 0021's sine table and pluck buffers and 0019's chorus
+live, and the sample memory (0x4F9..) are uncached. Overbridge, scenes and
+performance cost nothing in the interrupt when unused beyond what 0024 cuts;
+removing them would free code space, not CPU.
+
+**Next: new DG machines.** Seven machines for the hidden slots 35..40, 42, 43
+(each brings its old routine's ~1 KB as code room), sample-aware where it fits,
+working as before with no sample: DG GRAIN (granular from the track's sample),
+DG WAVE (wavetable; the sample becomes the table), DG MODAL (a Rings-like
+resonator the sample excites), DG SUBTR (two oscillators and a resonant
+lowpass; oscillator 2 the sample), DG FOLD (a wavefolder, folding the sample),
+DG FORM (formants), and PLUCK's burst from the sample. A shared, unlockable
+page 2 for every DG machine: SUB MIX ATK CRV / SAT DRK TRM RNG, stored in the
+saved sound's last 8 spare bytes. First the groundwork: the sample table's
+layout, and the DG tables moved from uncached SDRAM into the cached heap.
+
 # rytm-mods
 
 -Public copy of MrScruff's firmware modifications for the Analog Rytm MKII, redistributed with permission. Released as-is, responses to issues should not be expected.
