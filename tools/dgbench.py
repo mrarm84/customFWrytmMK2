@@ -48,7 +48,7 @@ BUDGET = CPU_HZ * FRAMES // RATE        # cycles in one block at 266 MHz
 OBJDUMP = "m68k-elf-objdump"
 
 MACHINES = ["dg_sine", "dg_saw", "dg_pulse", "dg_fm2", "dg_organ",
-            "dg_chord", "dg_super", "dg_pluck", "dg_chip", "dg_fold", "dg_grain"]
+            "dg_chord", "dg_super", "dg_pluck", "dg_chip", "dg_fold", "dg_grain", "dg_wave"]
 
 
 def k(v):
@@ -83,6 +83,10 @@ SCEN = {
     "dg_grain": {"plain": [100, 64, 127, 64, 0, 48, 48, 16, 0],
                  "smp":   [100, 64, 127, 64, 32, 48, 48, 16, 1],
                  "cloud": [100, 64, 127, 64, 64, 90, 110, 80, 1]},
+    # WAVE: WAV WEN WDC SUB, then SMP
+    "dg_wave":  {"plain": [100, 64, 127, 64, 64, 0, 80, 0, 0],
+                 "sweep": [100, 64, 127, 64, 0, 127, 70, 0, 0],
+                 "smp":   [100, 64, 127, 64, 40, 60, 60, 0, 1]},
     "dg_chip":  {"plain": [100, 64, 127, 64, 2, 0, 0, 64],
                  "busy":  [100, 64, 110, 64, 1, 3, 100, 70]},
 }

@@ -145,6 +145,9 @@
         .equ    P_SIZ,          10                | 14
         .equ    P_DEN,          12                | 15
         .equ    P_SPR,          14                | 16
+        .equ    P_WAV,          8                 | 13 (WAVE)
+        .equ    P_WEN,          10                | 14
+        .equ    P_WDC,          12                | 15
         .equ    P_SMP,          20                | 19: the SAMPLE page's SMP, the slot
         .equ    SMP_TAB,        0x41329e70        | 16 B a slot: +0 start, +8 length
                                                   | (16-bit samples), +12 rate, Q30
@@ -1859,21 +1862,6 @@ dg_mksin:
         rts
 
         .align  2
-        | every id 0021 reuses but the template; the sentinel last, then 0
-fix_ids:
-        .word   408, 409, 411, 412, 413, 414
-        .word   416, 417, 418, 419, 421
-        .word   422, 423, 424, 425, 426, 427, 428, 429
-        .word   430, 431, 432, 433, 434, 443, 444, 445
-        .word   435, 436, 437, 438, 439, 440, 441, 442
-        .word   449, 450, 451, 452, 453, 454, 455              | batch 3
-        .word   415, 398, 399, 400, 401, 402
-        .word   403, 404, 405, 406, 407
-        .word   447, 448, 390, 391, 392, 393, 394, 395, 396
-        .word   382, 383, 384, 385, 386, 387, 388, 389
-        .word   342, 343, 344, 345, 346, 347, 348, 349     | batch 4: FOLD
-        .word   350, 351, 352, 353, 354, 355, 356, 357     | GRAIN
-        .word   ID_SENTINEL, 0
 
         | ==================================================================
         | cave15: the names of batches 1 and 2.
@@ -2057,6 +2045,25 @@ txt_sym_s:      .asciz  "SYM"
 txt_fen_l:      .asciz  "Fold Env"
 txt_fen_s:      .asciz  "FEN"
         .align  2
+
+        | fix_ids, moved here from .text7 (cave10, full) as batch 4 grows it
+        .align  2
+        | every id 0021 reuses but the template; the sentinel last, then 0
+fix_ids:
+        .word   408, 409, 411, 412, 413, 414
+        .word   416, 417, 418, 419, 421
+        .word   422, 423, 424, 425, 426, 427, 428, 429
+        .word   430, 431, 432, 433, 434, 443, 444, 445
+        .word   435, 436, 437, 438, 439, 440, 441, 442
+        .word   449, 450, 451, 452, 453, 454, 455              | batch 3
+        .word   415, 398, 399, 400, 401, 402
+        .word   403, 404, 405, 406, 407
+        .word   447, 448, 390, 391, 392, 393, 394, 395, 396
+        .word   382, 383, 384, 385, 386, 387, 388, 389
+        .word   342, 343, 344, 345, 346, 347, 348, 349     | batch 4: FOLD
+        .word   350, 351, 352, 353, 354, 355, 356, 357     | GRAIN
+        .word   358, 359, 360, 361, 362, 363, 364, 365     | WAVE
+        .word   ID_SENTINEL, 0
 
         | ==================================================================
         | cave34 (.text10): DG GRAIN, in SD HARD 2's routine (machine 37).
@@ -2360,4 +2367,249 @@ txt_den_l:      .asciz  "Density"
 txt_den_s:      .asciz  "DEN"
 txt_spr_l:      .asciz  "Spray"
 txt_spr_s:      .asciz  "SPR"
+        .align  2
+
+        | ==================================================================
+        | cave35 (.text11): DG WAVE, in SD CLASSIC 2's routine (machine 38).
+        | ==================================================================
+        .section .text11,"ax"
+        .align  2
+
+        | ------------------------------------------------------------- DG WAVE
+        | A wavetable. With a sample (SAMPLE page SMP) the table is the sample
+        | cut into 256-sample single-cycle frames; without, five shapes
+        | computed from the phase: sine, triangle, saw, square, a 25% pulse.
+        | The position (Q15 over the table) is WAV plus WEN times the wave
+        | envelope (ST_SWE, full at the trig, falling at WDC's rate); the two
+        | frames (or shapes) either side of it are read at the note's pitch,
+        | each with linear interpolation, and crossfaded. Then SUB and the
+        | level.
+        .equ    WV_FRAME,       256               | samples a frame (a cycle)
+
+dg_wave:
+        DG_ENTRY
+        jsr     dg_enter
+        tst.l   %d0
+        bne.s   0f
+        jmp     dg_exit
+0:      move.l  ST_SWE(%a2),%d0                   | the wave envelope
+        move.w  P_WDC(%a3),%d1
+        jsr     dg_decay
+        move.l  %d0,ST_SWE(%a2)
+        moveq   #15,%d1
+        asr.l   %d1,%d0                           | Q15
+        move.w  P_WEN(%a3),%d1
+        ext.l   %d1
+        asr.l   #8,%d1
+        muls.l  %d1,%d0
+        asr.l   #7,%d0                            | WEN's share, Q15 of the table
+        move.w  P_WAV(%a3),%d1                    | WAV, 8.8: 0..32512 already
+        ext.l   %d1
+        add.l   %d1,%d0
+        cmp.l   #32767,%d0
+        ble.s   1f
+        move.l  #32767,%d0
+1:      move.l  %d0,wv_pos
+        jsr     dg_note
+        move.l  %d3,%d0
+        jsr     dg_inc
+        move.l  %d0,wv_inc
+        move.l  %a2,-(%sp)                        | the state, for the passes
+        movea.l %a4,%a5                           | a5 the output cursor
+        moveq   #FRAMES,%d7
+        move.l  ST_PH1(%a2),%d3
+
+        mvz.w   P_SMP(%a3),%d0                    | a sample?
+        lsr.l   #8,%d0
+        and.l   #0xff,%d0
+        beq.w   20f
+        lsl.l   #4,%d0
+        add.l   #SMP_TAB,%d0
+        movea.l %d0,%a0
+        move.l  8(%a0),%d1                        | length, samples
+        lsr.l   #8,%d1                            | whole frames
+        cmp.l   #2,%d1
+        bcs.w   20f                               | under two: the shapes
+        subq.l  #2,%d1                            | the last frame pair's first
+        move.l  wv_pos,%d0
+        addq.l  #1,%d1
+        mulu.l  %d1,%d0                           | position * (frames - 1), Q15
+        move.l  %d0,%d6
+        and.l   #0x7fff,%d6                       | ff, Q15
+        moveq   #15,%d1
+        lsr.l   %d1,%d0                           | fi
+        lsl.l   #8,%d0
+        lsl.l   #1,%d0                            | * 256 samples * 2 bytes
+        add.l   (%a0),%d0
+        movea.l %d0,%a0                           | frame A
+        lea     WV_FRAME*2(%a0),%a1               | frame B
+10:     move.l  %d3,%d0                           | i = phase >> 24
+        swap    %d0
+        lsr.l   #8,%d0
+        and.l   #0xff,%d0
+        move.l  %d3,%d2                           | t = 15 bits below it
+        lsr.l   #8,%d2
+        lsr.l   #1,%d2
+        and.l   #0x7fff,%d2
+        move.l  (%a0,%d0.l*2),%d1                 | A: s0 s1 in one read
+        move.w  %d1,%d4
+        ext.l   %d4
+        swap    %d1
+        ext.l   %d1
+        sub.l   %d1,%d4
+        muls.l  %d2,%d4
+        asr.l   #8,%d4
+        asr.l   #7,%d4
+        add.l   %d4,%d1
+        move.l  (%a1,%d0.l*2),%d5                 | B
+        move.w  %d5,%d4
+        ext.l   %d4
+        swap    %d5
+        ext.l   %d5
+        sub.l   %d5,%d4
+        muls.l  %d2,%d4
+        asr.l   #8,%d4
+        asr.l   #7,%d4
+        add.l   %d4,%d5
+        sub.l   %d1,%d5                           | A + (B - A) ff
+        muls.l  %d6,%d5
+        asr.l   #8,%d5
+        asr.l   #7,%d5
+        add.l   %d1,%d5
+        move.l  %d5,(%a5)+
+        add.l   wv_inc,%d3
+        subq.l  #1,%d7
+        bne.w   10b
+        bra.w   30f
+
+        | the shapes: position Q15 over four spans, sine-tri, tri-saw,
+        | saw-square, square-pulse
+20:     move.l  wv_pos,%d0
+        move.l  %d0,%d6
+        and.l   #0x1fff,%d6
+        lsl.l   #2,%d6                            | ff, Q15
+        moveq   #13,%d1
+        lsr.l   %d1,%d0                           | the span, 0..3
+        move.l  %d0,wv_span
+        lea     SIN_TAB,%a1
+21:     move.l  wv_span,%d1
+        move.l  %d3,%d0
+        bsr.s   wv_shape
+        move.l  %d0,%d5                           | A
+        move.l  wv_span,%d1
+        addq.l  #1,%d1
+        move.l  %d3,%d0
+        bsr.s   wv_shape
+        sub.l   %d5,%d0                           | A + (B - A) ff
+        muls.l  %d6,%d0
+        asr.l   #8,%d0
+        asr.l   #7,%d0
+        add.l   %d5,%d0
+        move.l  %d0,(%a5)+
+        add.l   wv_inc,%d3
+        subq.l  #1,%d7
+        bne.s   21b
+
+30:     movea.l (%sp)+,%a2
+        move.l  %d3,ST_PH1(%a2)
+        movea.l A_CTRL(%sp),%a5
+        movea.l wv_inc,%a6                        | for SUB
+        jsr     dg_finish
+        jmp     dg_exit
+
+        | wv_shape(d0 phase, d1 shape 0..4, a1 SIN_TAB) -> d0, Q15.
+        | Clobbers d1, d2.
+wv_shape:
+        tst.l   %d1
+        bne.s   1f
+        moveq   #20,%d1                           | 0: sine
+        lsr.l   %d1,%d0
+        mvs.w   (%a1,%d0.l*2),%d0
+        rts
+1:      subq.l  #1,%d1
+        bne.s   2f
+        swap    %d0                               | 1: triangle
+        and.l   #0xffff,%d0
+        cmp.l   #32768,%d0
+        bcs.s   11f
+        not.l   %d0
+        and.l   #0xffff,%d0
+11:     add.l   %d0,%d0
+        sub.l   #32768,%d0
+        rts
+2:      subq.l  #1,%d1
+        bne.s   3f
+        bra.s   wv_saw                            | 2: saw
+3:      subq.l  #1,%d1
+        bne.s   4f
+        move.l  #0x80000000,%d1                   | 3: square, saw - saw half a
+        bra.s   5f                                | cycle on
+4:      move.l  #0x40000000,%d1                   | 4: a 25% pulse, a quarter on
+5:      move.l  %d3,-(%sp)
+        move.l  %d0,-(%sp)
+        add.l   %d1,%d0
+        bsr.s   wv_saw
+        move.l  %d0,%d3
+        move.l  (%sp)+,%d0
+        bsr.s   wv_saw
+        sub.l   %d3,%d0                           | +-65536 -> about +-24576
+        move.l  %d0,%d1
+        add.l   %d0,%d0
+        add.l   %d1,%d0
+        asr.l   #3,%d0
+        move.l  (%sp)+,%d3
+        rts
+
+        | wv_saw(d0 phase) -> d0, a rising saw in Q15 with a polyBLEP at its
+        | wrap, from wv_inc: t < dt: saw -= 2x - x^2 - 1, x = t/dt; t > 1-dt:
+        | saw -= y^2 - 2y + 1, y = (1-t)/dt. Clobbers d1, d2.
+wv_saw:
+        move.l  %d0,%d2                           | t, 0..2^32
+        swap    %d0
+        and.l   #0xffff,%d0
+        sub.l   #32768,%d0                        | the naive saw
+        move.l  wv_inc,%d1
+        lsr.l   #8,%d1
+        lsr.l   #7,%d1                            | dt >> 15
+        beq.s   9f
+        cmp.l   wv_inc,%d2
+        bcs.s   6f
+        neg.l   %d2                               | 1 - t
+        cmp.l   wv_inc,%d2
+        bcc.s   9f
+        divu.l  %d1,%d2                           | y, Q15
+        move.l  %d2,%d1
+        muls.l  %d1,%d1
+        asr.l   #8,%d1
+        asr.l   #7,%d1                            | y^2
+        sub.l   %d2,%d1
+        sub.l   %d2,%d1
+        add.l   #32768,%d1
+        sub.l   %d1,%d0
+        rts
+6:      divu.l  %d1,%d2                           | x, Q15
+        move.l  %d2,%d1
+        muls.l  %d1,%d1
+        asr.l   #8,%d1
+        asr.l   #7,%d1                            | x^2
+        neg.l   %d1
+        add.l   %d2,%d1
+        add.l   %d2,%d1
+        sub.l   #32768,%d1
+        sub.l   %d1,%d0
+9:      rts
+
+        .align  2
+wv_pos:   .long 0
+wv_inc:   .long 0
+wv_span:  .long 0
+
+txt_wave_long:  .asciz  "DG WAVE"
+txt_wave_short: .asciz  "WAVE"
+txt_wav_l:      .asciz  "Wave"
+txt_wav_s:      .asciz  "WAV"
+txt_wen_l:      .asciz  "Wave Env"
+txt_wen_s:      .asciz  "WEN"
+txt_wdc_l:      .asciz  "Wave Decay"
+txt_wdc_s:      .asciz  "WDC"
         .align  2

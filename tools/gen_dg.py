@@ -54,6 +54,16 @@ MACHINES = {
         "row": ["TUN", "FIN", "POS", "DEC", "SIZ", "DEN", "SPR", "LEV"],
         "title": "DG GRAIN",
     },
+    "wave": {
+        "slot": 38, "entry": "dg_wave", "names": ("txt_wave_long", "txt_wave_short"),
+        "ids": list(range(358, 366)),
+        "own": [("WAV", "txt_wav_l", "txt_wav_s", 0x7f00, 0x0000, 0),
+                ("WEN", "txt_wen_l", "txt_wen_s", 0x7f00, 0x0000, 0),
+                ("WDC", "txt_wdc_l", "txt_wdc_s", 0x7f00, 0x5000, 0),
+                ("SUB",) + STD["SUB"]],
+        "row": ["TUN", "FIN", "WAV", "DEC", "WEN", "WDC", "SUB", "LEV"],
+        "title": "DG WAVE",
+    },
 }
 
 
