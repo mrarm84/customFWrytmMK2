@@ -1,0 +1,36 @@
+[mod]
+id      = "0026-cache"
+title   = "Data cache over the uncached SDRAM (ACR1, write-through): an experiment"
+
+enabled = false
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+An experiment, off by default. MAIN OS caches only 0x40000000..0x47ffffff
+(ACR0 0x4007e020; CACR's default mode is cache-inhibited), so 0x4B.. (the stock
+reverb's buffers, the delay ring, 0022's free RAM with 0021's sine table and
+pluck buffers and 0019's chorus) and 0x4F.. (sample memory) are read uncached.
+This sets the unused ACR1 at start-up, in write-through mode: region 1 caches
+0x4B000000..0x4BFFFFFF, region 2 0x48000000..0x4FFFFFFF.
+
+Measure with the meter (0023) against the same build without it, and listen
+for glitches: a DMA writing into a cached range could leave the CPU a stale
+line. The one such writer found statically, eDMA 59 into 0x4B827280 (storage
+reads), is flushed by stock (cpushl dc) before each transfer. The delay moves
+its ring by eDMA 30/42 to and from SRAM and never reads it with the CPU.
+Things to try on a unit: sample playback, loading samples and projects from
++Drive, sampling, the delay and reverb, the DG machines.
+"""
+
+[sources]
+stub = "stub.s"
+
+[params]
+# 1: 0x4B000000..0x4BFFFFFF; 2: 0x48000000..0x4FFFFFFF (sample memory too).
+region = 1
+
+[requires]
+shared = false
+symbols = []

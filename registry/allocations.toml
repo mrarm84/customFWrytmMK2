@@ -5222,3 +5222,20 @@ addr        = 0x401e2428
 size        = 4
 expect      = "400ce23e"
 from_symbol = "perf_leds"
+
+# --------------------------------------------------------------- 0026-cache
+
+[[cave]]
+owner = "0026-cache"
+addr  = 0x402ccfa8
+size  = 0x18
+note  = "In cave1's last free bytes: the start-up stub that sets ACR1."
+
+# MAIN OS start-up, after the SRAM copy and the .bss clear: `movel #0x4007e020,%d0`,
+# ACR0's value, re-emitted after ACR1 is set; the movec to ACR0 follows. Runs once.
+[[detour]]
+owner  = "0026-cache"
+addr   = 0x400008e8
+size   = 6
+expect = "203c4007e020"
+entry  = "cache_acr1"
