@@ -1,10 +1,9 @@
 """Read mod 0023's audio interrupt meter off the Rytm's USB stream.
 
-The meter build writes sixteen words over voice slot 7 (USB channel 10), frame f
-carrying word f mod 16, (tag << 24) | (value << 8), one block late:
+The meter build writes 32 words over voice slot 7 (USB channel 10), one a frame, (tag << 24) | (value << 8), one block late:
     0x50  the whole interrupt's run / 4      0x51  the interval / 4
-    0x52..0x5d  twelve sections along the interrupt's main path, in ticks
-    0x5e  a block counter                    0x5f  0
+    0x52..0x65  twenty sections along the interrupt's main path, in ticks
+    0x66  a block counter                    0x67..0x6f  0
 all in DMA timer 0 ticks (about 130 MHz). Shares are of the measured interval,
 so the timer's exact rate does not matter. See mods/0023-isr-meter/stub.s for
 where each section starts and ends.
@@ -38,10 +37,18 @@ TICK_HZ = 130e6
 SECTIONS = [
     "pre: entry, trigs, voice set-up",
     "parameter smoothing + interpolation",
-    "scenes, CV in, vel/AT routes, perf",
+    "scenes, CV in, vel/AT routes",
     "LFOs + LFO RND (0004)",
     "machines (+ portamento)",
-    "env, sample layer?, pan, master vol",
+    "0x4011c64c (sample layer?)",
+    "0x4010ea2c",
+    "filter envelopes (0x4010d090)",
+    "amp envelopes (0x401098d4)",
+    "mute/solo loop",
+    "route_all (0013) + master volume",
+    "0x40121306..0x4012132c",
+    "0x4010e1a0 (frame set-up)",
+    "return mixers PRE/POST",
     "receive fill + DAC SUM (0013)",
     "stock delay + reverb (+0019 pre)",
     "REVERB 2 / phaser / DIST FILTER",
@@ -51,20 +58,30 @@ SECTIONS = [
 ]
 
 
+# The live view's columns: section indices (0-based), or (first, last) summed.
+LIVE = (0, 4, (5, 13), 14, 15, 16, 18)
+
+
+def group(d, k):
+    if isinstance(k, tuple):
+        return d["sec"][:, k[0]:k[1] + 1].sum(1)
+    return d["sec"][:, k]
+
+
 def decode(x):
     """Per-block arrays from an (n, 12) int32 capture, or None."""
     w = x[:, CH].astype(np.int64) & 0xffffffff
     tag, val = w >> 24, (w >> 8) & 0xffff
     cols = []
-    for t in range(0x50, 0x5e):
-        v = val[tag == t][::2]            # two copies a block; keep one
+    for t in range(0x50, 0x52 + len(SECTIONS)):
+        v = val[tag == t]                 # one copy a block
         if len(v) == 0:
             return None
         cols.append(v.astype(np.float64))
     n = min(len(c) for c in cols)
     cols = [c[:n] for c in cols]
     return {"run": cols[0] * 4, "iv": cols[1] * 4, "sec": np.stack(cols[2:], 1),
-            "tagged": ((tag >= 0x50) & (tag <= 0x5f)).mean()}
+            "tagged": ((tag >= 0x50) & (tag <= 0x6f)).mean()}
 
 
 def pct(v, iv):
@@ -144,14 +161,14 @@ def main():
                 raise SystemExit("no tagged frames on channel 10: is the 0023 build flashed?")
             report(d)
             return
-        print("whole% med/max | pre    | machine| env/smp| DACSUM | dly+rev| REV2   | USB    (Ctrl+C)")
+        print("whole% med/max | pre    | machine| sect 6 | DACSUM | dly+rev| REV2   | USB    (Ctrl+C)")
         while True:
             x, over = st.read(FS)
             d = decode(np.asarray(x))
             if d is None:
                 print("no tagged frames"); continue
             r = pct(d["run"], d["iv"])
-            m = [np.median(pct(d["sec"][:, k], d["iv"])) for k in (0, 4, 5, 6, 7, 8, 10)]
+            m = [np.median(pct(group(d, k), d["iv"])) for k in LIVE]
             print(f"{time.strftime('%H:%M:%S')}  {np.median(r):6.2f} / {r.max():6.2f} | "
                   + " | ".join(f"{v:6.2f}" for v in m)
                   + ("   (overflow)" if over else ""), flush=True)

@@ -4999,10 +4999,17 @@ note  = "The audio interrupt meter: entry, exit, eleven marks, the USB emitter a
 
 [[cave]]
 owner   = "0023-isr-meter"
-addr    = 0x401b71f8
-size    = 0x7c
+addr    = 0x401ba290
+size    = 0x200
 section = ".mdata"
-note    = "In cave22, after 0024's code: the meter's thirteen marks, sixteen words, interval and block counter, written at run time."
+note    = "All of cave6: the meter's 21 marks, 32 words, interval and block counter, written at run time. 0024 uses cave6 when its half is on; the two cannot be in one image then, which layout.py reports."
+
+[[cave]]
+owner   = "0023-isr-meter"
+addr    = 0x40137a48
+size    = 0x108
+section = ".mk2"
+note    = "All of cave7: the eight marks that split section 6 (0x40121218..0x40121358). 0024 uses cave7 when its half is on."
 
 # Mark 0, the audio interrupt's entry: `linkw %fp,#-180` and the first half of
 # `moveml %d0-%a5,%sp@`, both re-emitted. Nothing branches into 0x4011fafc..0x4011fb01;
@@ -5067,7 +5074,7 @@ owner  = "0023-isr-meter"
 addr   = 0x40121358
 size   = 6
 expect = "4eb94010e944"
-entry  = "m_k6"
+entry  = "m_k14"
 
 # Marks 7 and 8, around the stock FX generation: over `addql #4,%sp`, `movel
 # %d2,%sp@` and the first half of `jsr 0x4010e650`, all re-emitted, rejoining at
@@ -5078,7 +5085,7 @@ owner  = "0023-isr-meter"
 addr   = 0x40121396
 size   = 6
 expect = "588f2e824eb9"
-entry  = "m_k78"
+entry  = "m_k1516"
 rejoin = 0x401213a0
 
 # Mark 9, after 0019's fx_post: `lea 0x8000e4d4,%a0`, re-emitted (0019 rejoins
@@ -5088,7 +5095,7 @@ owner  = "0023-isr-meter"
 addr   = 0x401213aa
 size   = 6
 expect = "41f98000e4d4"
-entry  = "m_k9"
+entry  = "m_k17"
 
 # Mark 10 and the emitter, before USB, main path: `pea 0x80007440`, re-emitted.
 # The bnes at 0x401213cc lands on its first byte.
@@ -5106,7 +5113,7 @@ owner  = "0023-isr-meter"
 addr   = 0x4012145e
 size   = 6
 expect = "4879800063c0"
-entry  = "m_k11"
+entry  = "m_k19"
 
 # Mark 12, the interrupt's single exit (both paths): `moveml %fp@(-32),%d0-%d6/%a0`,
 # re-emitted; the bles at 0x40121626 and bnes at 0x40121630 land on its first byte.
@@ -5116,3 +5123,67 @@ addr   = 0x4012163a
 size   = 6
 expect = "4cee017fffe0"
 entry  = "m_out"
+
+# Mark 6, after 0x4011c64c: `movel 0x42f92124,%d0`, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x4012121e
+size   = 6
+expect = "203942f92124"
+entry  = "m_k6"
+
+# Mark 7, after 0x4010ea2c: `pea 0x800063c0`, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121234
+size   = 6
+expect = "4879800063c0"
+entry  = "m_k7"
+
+# Mark 8, after the filter envelopes: `pea 0x800063c0`, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121240
+size   = 6
+expect = "4879800063c0"
+entry  = "m_k8"
+
+# Mark 9, after the amp envelopes: `movel 0x8000ed6c,%d2`, last for the bges, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121250
+size   = 6
+expect = "24398000ed6c"
+entry  = "m_k9"
+
+# Mark 10, after the mute/solo loop: `movel 0x42f92124,%d3`, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x401212ae
+size   = 6
+expect = "263942f92124"
+entry  = "m_k10"
+
+# Mark 11, after 0013's route_all and the master volume: `movew 0x8000fbce,%d0`, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121306
+size   = 6
+expect = "30398000fbce"
+entry  = "m_k11"
+
+# Mark 12, before 0x4010e1a0: `jsr 0x4010e1a0`, after the mark, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x4012132c
+size   = 6
+expect = "4eb94010e1a0"
+entry  = "m_k12"
+
+# Mark 13, before the return mixers: `jsr 0x4010ede2`, after the mark, re-emitted. Nothing branches into its last five bytes.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121338
+size   = 6
+expect = "4eb94010ede2"
+entry  = "m_k13"

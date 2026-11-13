@@ -1,38 +1,49 @@
-        | Mod 0023 - the audio interrupt's load, over USB, in twelve sections.
+        | Mod 0023 - the audio interrupt's load, over USB, in twenty sections.
         |
         | DMA timer 0 (DTCN0, about 130 MHz) is read at the interrupt's entry
-        | (mark 0), at eleven points along its main path (marks 1..11), and at
-        | its exit (mark 12). The exit packs block k's sixteen words; the
-        | emitter writes them over voice slot 7 of the receive buffer during
-        | block k+1, just before stock hands that buffer to USB (USB channel
-        | 10), frame f carrying word f mod 16, (tag << 24) | (value << 8):
+        | (mark 0), at nineteen points along its main path (marks 1..19), and at
+        | its exit (mark 20). The exit packs block k's words; the emitter writes
+        | them over voice slot 7 of the receive buffer during block k+1, just
+        | before stock hands that buffer to USB (USB channel 10), one word a
+        | frame, (tag << 24) | (value << 8):
         |   0x50  the whole run / 4           0x51  the interval / 4
-        |   0x52..0x5d  section 1..12 in ticks (mark k - mark k-1)
-        |   0x5e  a block counter             0x5f  0
+        |   0x52..0x65  section 1..20 in ticks (mark k - mark k-1)
+        |   0x66  a block counter             0x67..0x6f  0
         | each held at 0xffff. Marks the alternate path never reaches keep the
         | entry's time, so its sections read 0. tools/isr_meter.py names them.
         |
-        | Marks and detours (registry/allocations.toml, 0023-isr-meter):
-        |   0  m_in    0x4011fafa  entry: `linkw; moveml` re-emitted
-        |   1  m_k1    0x40120c88  `jsr 0x4010e3b4`, marked after it
-        |   2  m_k2    0x40120e32  `tstl 0x8000fce8`, re-emitted last
-        |   3  m_k3    0x40120fa8  `movel 0x40287c9c,%sp@-` (before the LFOs)
-        |   4  m_k4    0x40120fb8  `lea 0x80005eac,%a0` (after the LFOs)
-        |   5  m_k5    0x40121218  `jsr 0x4011c64c` (after the machine calls)
-        |   6  m_k6    0x40121358  `jsr 0x4010e944` (the receive fill)
-        |   7,8 m_k78  0x40121396  around `jsr 0x4010e650` (the stock FX)
-        |   9  m_k9    0x401213aa  `lea 0x8000e4d4,%a0` (after 0019's fx_post)
-        |  10  m_emit  0x40121434  `pea 0x80007440` (before USB), and emits
-        |  11  m_k11   0x4012145e  `pea 0x800063c0` (after USB, before DMA)
-        |  12  m_out   0x4012163a  exit: `moveml %fp@(-32)` re-emitted
+        | Marks (registry/allocations.toml, 0023-isr-meter):
+        |   0  m_in    0x4011fafa  entry
+        |   1  m_k1    0x40120c88  before the smoothing
+        |   2  m_k2    0x40120e32  after the smoothing and interpolation
+        |   3  m_k3    0x40120fa8  before the LFOs
+        |   4  m_k4    0x40120fb8  after the LFOs
+        |   5  m_k5    0x40121218  after the machine calls, before 0x4011c64c
+        |   6  m_k6    0x4012121e  after 0x4011c64c
+        |   7  m_k7    0x40121234  after 0x4010ea2c
+        |   8  m_k8    0x40121240  after the filter envelopes (0x4010d090)
+        |   9  m_k9    0x40121250  after the amp envelopes (0x401098d4)
+        |  10  m_k10   0x401212ae  after the mute/solo loop
+        |  11  m_k11   0x40121306  after 0013's route_all and the master volume
+        |  12  m_k12   0x4012132c  before 0x4010e1a0
+        |  13  m_k13   0x40121338  after it, before the return mixers
+        |  14  m_k14   0x40121358  before the receive fill
+        |  15,16 m_k1516 0x40121396 around the stock FX (0x4010e650)
+        |  17  m_k17   0x401213aa  after 0019's fx_post
+        |  18  m_emit  0x40121434  before USB, and emits
+        |  19  m_k19   0x4012145e  after USB, before the voice DMA copy
+        |  20  m_out   0x4012163a  exit
+        | Code in cave2 and (the section-6 marks, .mk2) cave7; state (.mdata) in
+        | cave6. cave6 and cave7 are 0024's when its half is on: not both.
 
         .equ    DTCN0,          0xfc07000c        | DMA timer 0, about 130 MHz
         .equ    RXBUF,          0x80007440        | receive buffer, voice slot s at +8 + 4s
         .equ    RXSTRIDE,       48
         .equ    FRAMES,         32
         .equ    T_SLOT,         8 + 4 * 7         | voice slot 7: USB channel 10
-        .equ    MARKS,          13
-        .equ    WORDS,          16
+        .equ    MARKS,          21
+        .equ    WORDS,          32
+        .equ    SECTIONS,       MARKS - 1
 
         .text
 
@@ -92,40 +103,84 @@ m_k5:
         jmp     0x4012121e
 
         .align  2
-m_k6:
-        mark    6
+m_k14:
+        mark    14
         jsr     0x4010e944                        | displaced
         jmp     0x4012135e
 
         | m_k78: over `addql #4,%sp; movel %d2,%sp@` and the first half of
         | `jsr 0x4010e650`, all re-emitted, as 0013's timing build does.
         .align  2
-m_k78:
-        mark    7
+m_k1516:
+        mark    15
         addq.l  #4,%sp                            | displaced
         move.l  %d2,(%sp)                         | displaced
         jsr     0x4010e650                        | displaced
-        mark    8
+        mark    16
         jmp     0x401213a0
 
         .align  2
-m_k9:
-        mark    9
+m_k17:
+        mark    17
         lea     0x8000e4d4,%a0                    | displaced
         jmp     0x401213b0
 
         .align  2
-m_k11:
-        mark    11
+m_k19:
+        mark    19
         pea     0x800063c0                        | displaced
         jmp     0x40121464
+
+        | The section-6 marks, in cave7.
+        .section .mk2,"ax"
+        .align  2
+m_k6:
+        mark    6
+        move.l  0x42f92124,%d0                    | displaced
+        jmp     0x40121224
+        .align  2
+m_k7:
+        mark    7
+        pea     0x800063c0                        | displaced
+        jmp     0x4012123a
+        .align  2
+m_k8:
+        mark    8
+        pea     0x800063c0                        | displaced
+        jmp     0x40121246
+        .align  2
+m_k9:
+        mark    9
+        move.l  0x8000ed6c,%d2                    | displaced, last: a bges follows
+        jmp     0x40121256
+        .align  2
+m_k10:
+        mark    10
+        move.l  0x42f92124,%d3                    | displaced
+        jmp     0x401212b4
+        .align  2
+m_k11:
+        mark    11
+        move.w  0x8000fbce,%d0                    | displaced
+        jmp     0x4012130c
+        .align  2
+m_k12:
+        mark    12
+        jsr     0x4010e1a0                        | displaced
+        jmp     0x40121332
+        .align  2
+m_k13:
+        mark    13
+        jsr     0x4010ede2                        | displaced
+        jmp     0x4012133e
+        .text
 
         | m_out: every data and address register is about to be reloaded
         | from the frame, so all are free here.
         .align  2
 m_out:
         move.l  DTCN0,%d0
-        move.l  %d0,m_mk+4*12
+        move.l  %d0,m_mk+4*SECTIONS
         lea     m_mk,%a0
         lea     m_w,%a1
         sub.l   (%a0),%d0                         | the whole run
@@ -136,7 +191,7 @@ m_out:
         lsr.l   #2,%d0
         moveq   #0x51,%d2
         bsr.s   m_pack
-        moveq   #12-1,%d3                         | sections 1..12
+        moveq   #SECTIONS-1,%d3                   | sections 1..20
 1:      move.l  4(%a0),%d0
         sub.l   (%a0)+,%d0
         bpl.s   2f
@@ -149,11 +204,14 @@ m_out:
         addq.l  #1,%d0
         move.l  %d0,m_cnt
         and.l   #0xffff,%d0
-        moveq   #0x5e,%d2
+        moveq   #0x66,%d2
         bsr.s   m_pack
-        moveq   #0,%d0
-        moveq   #0x5f,%d2
+        moveq   #0x6f-0x66-1,%d3                  | the rest 0
+3:      moveq   #0,%d0
+        addq.l  #1,%d2
         bsr.s   m_pack
+        subq.l  #1,%d3
+        bpl.s   3b
         movem.l -32(%fp),%d0-%d6/%a0              | displaced
         jmp     0x40121640
 
@@ -175,15 +233,13 @@ m_pack:
         | keeps every register; the displaced pea last.
         .align  2
 m_emit:
-        mark    10
+        mark    18
         lea     -16(%sp),%sp
         movem.l %d0-%d1/%a0-%a1,(%sp)
         lea     RXBUF+T_SLOT,%a0
         moveq   #FRAMES-1,%d1
-1:      moveq   #WORDS-1,%d0
-        and.l   %d1,%d0
         lea     m_w,%a1
-        move.l  (%a1,%d0.l*4),(%a0)
+1:      move.l  (%a1,%d1.l*4),(%a0)               | frame 31 - d1 gets word d1
         lea     RXSTRIDE(%a0),%a0
         subq.l  #1,%d1
         bpl.s   1b
