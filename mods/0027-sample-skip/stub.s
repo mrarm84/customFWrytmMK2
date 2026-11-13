@@ -42,7 +42,7 @@
         .macro  dbgbit base
         .if     P_DBG
         move.l  SP_VOICE(%sp),%d7
-        add.l   #ase,%d7
+        add.l   #\base,%d7
         move.l  SK_DBG,%d6
         bset    %d7,%d6
         move.l  %d6,SK_DBG
