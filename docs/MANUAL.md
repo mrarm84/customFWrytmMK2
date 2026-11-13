@@ -87,6 +87,20 @@ The four settings belong to the sound. They are saved with the kit and survive a
 power cycle, and they travel with the sound through copy/paste and the sound
 pool. Sounds made before the mod read the first destination at depth 0.
 
+**Degrade (lite build).** Knobs G and H of the LFO RND page, per sound:
+
+| knob | label | setting |
+|---|---|---|
+| G | SRD | downsample: 0 off, 1 = 24 kHz .. 127 = 375 Hz (each sample held SRD + 1 times) |
+| H | BIT | bit depth: 0 off, then 16 bits down to 1 bit at 127 |
+
+The voices are analog, so a degraded voice goes through the DAC: with DAC SUM ON
+all voices do already; with DAC SUM OFF only the voices of tracks with SRD or BIT
+above 0 are moved there, the others stay analog. A voice through the DAC reaches
+the mix about 2.6 ms later than an analog one, and it also passes the DIST filter
+(0019). The reverb and delay sends get the degraded voice. Costs CPU only while
+some track has SRD or BIT on.
+
 **Portamento (lite build).** Knobs C and D of the LFO RND page:
 
 | knob | label | setting |
@@ -326,20 +340,23 @@ value is.
 
 | knob | what | 0 |
 |---|---|---|
-| A OCT | octaver: adds a sub-octave (an octave down), level | off |
+| A WID | stereo width: widens the return (the side signal up to about +13 dB) | off |
 | B SRR | sample-rate reduction, N holds each sample N + 1 times | off |
 | C HIS | hiss, quiet: up to about -42 dB | off |
 | D 12B | 12-bit FX: above 0, the reverb's output and the delay's input keep only their top 12 bits (no dither) | off |
-| E | (empty) | |
-| F CMB | comb filter tune, low to high | off |
-| G CMK | comb feedback (how strong the comb is) | - |
+| E DRK | darken: a lowpass, gentle (about 7 kHz) to very dark (about 70 Hz) | off |
+| F SAT | saturation: drives the return into a soft clip, up to 9x | off |
+| G TRM | auto-pan tremolo, rate 0.1..24 Hz | off |
 | H RNG | ring modulator frequency, 20 Hz..4.8 kHz | off |
+
+Lite build: the comb filter (CMB, CMK) and the octaver are gone; WID, DRK, SAT
+and TRM take their places. Kits saved before load those four at 0.
 
 - **Press any REVERB 2 knob** to move its effect between the reverb output and
   the delay input. On the delay input every repeat goes through it (and the
-  delay's send into the reverb too). A trailing dot on the label (`OCT.`,
-  `SRR.` ...) means the effect is on the delay. CMB and CMK move the comb
-  together. Device-wide, kept over a power cycle.
+  delay's send into the reverb too). A trailing dot on the label (`WID.`,
+  `SRR.` ...) means the effect is on the delay. Device-wide, kept over a power
+  cycle.
 - **FUNC + hold** on SRR crushes the whole output while held (`ALL`).
 - None of them can be p-locked; all are saved with the kit. Older kits load
   them off (CMK at 64).

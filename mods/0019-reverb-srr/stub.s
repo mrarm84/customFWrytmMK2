@@ -16,8 +16,8 @@
         | phaser OFF (PH-), on the reverb's output (PHS), on the delay's input
         | (PHS.), cfg byte 8.
         |
-        | REVERB 2 (page 14) is BIT, SRR, HIS, CHR, DEP, CMB, CMK, RNG; see
-        | cave31 below for all but SRR.
+        | REVERB 2 (page 14) is WID, SRR, HIS, 12B, DRK, SAT, TRM, RNG (lite);
+        | see cave31 below for all but SRR.
         |
         | SRR N holds each sample for N + 1 samples: 0 is off and bit-exact
         | stock, 1 is 24 kHz, 127 is 375 Hz. The hold count carries across
@@ -197,8 +197,8 @@ fx_post:
         bne.s   6f
         lea     REVERB_OUT,%a1
         jsr     ph_go
-6:      jsr     cfg_r2r                           | REVERB 2's comb, ring, octave,
-        not.l   %d0                               | hiss: those not on the delay
+6:      jsr     cfg_r2r                           | REVERB 2's effects: those
+        not.l   %d0                               | not on the delay
         move.l  %d0,rv2_mask
         lea     REVERB_OUT,%a1
         jsr     rv2_go
@@ -1227,34 +1227,40 @@ rev_pages:
         | CHR's press. The delays are worked out once a block and slid.
         |
         | rv2_go, on the reverb's output last, at 24 kHz (a pair of frames at
-        | a time): CMB a comb on the mono sum, 512 * 2^(-CMB / 16) pairs (47
-        | Hz up), the line taking (1 - g) x + g y, g = CMK to 0.93, its change
-        | added to both sides; RNG a ring modulator, a sine at 20 * 2^(RNG /
-        | 16) Hz (20 Hz..4.8 kHz) times the whole return; HIS hiss to -42 dB.
+        | a time), each by its press on the reverb or the delay's input, each
+        | costing nothing at 0. LITE: the comb (CMB, CMK) and the octaver are
+        | gone; in order:
+        |   DRK (E)  darken, a one-pole lowpass a side, c = (140 - v)^2 27/16
+        |            (about 7 kHz at 1, 2.7 kHz at 64, 70 Hz at 127)
+        |   SAT (F)  saturation, u = clamp(x (1 + v / 16)), u (1.5 - u^2 / 2)
+        |   RNG (H)  a ring modulator, a sine at 20 * 2^(RNG / 16) Hz (20
+        |            Hz..4.8 kHz) times the whole return
+        |   TRM (G)  auto-pan at 0.1 * 2^(v / 16) Hz (0.1..24 Hz): the side the
+        |            pan leaves is turned down, the other kept, no centre dip
+        |   WID (A)  stereo width, the side signal times 1 + v / 32
+        |   HIS (C)  hiss to -42 dB
         |
-        | The lines are 16-bit words in the SDRAM 0022 frees.
         | ------------------------------------------------------------------
         .equ    ID_R2,          334
         .equ    R2N,            8                 | records 334..341
         .equ    R2S,            7                 | of them kept in +0x65..+0x6b; OCT in DIST's
         .equ    ID_REF,         410               | a plain 0..127 record, as 0021's DG knobs take
         .equ    R2OFF,          0x64
-        .equ    R2TAG,          0xaa
+        .equ    R2TAG,          0xab              | lite: 0xaa kits load the reused slots at 0
+        .equ    R2TAG_OLD,      0xaa
         .equ    FXGET_STOCK,    0x400a8e90
         .equ    FXPUT_STOCK,    0x400a9ebc
         .equ    CHOBUF,         0x4B700000        | 2048 frames, L and R words, 8 KB
-        .equ    CMBBUF,         0x4B704000        | 1024 mono words at 24 kHz, 2 KB
         .equ    CHO_MASK,       2047
-        .equ    CMB_MASK,       1023
         .equ    CHO_BASE,       336               | 7 ms
         .equ    V_SRR,          0                 | rv2_val, byte offsets
         .equ    V_HIS,          2
         .equ    V_CHR,          4
-        .equ    V_DEP,          6
-        .equ    V_CMB,          8
-        .equ    V_CMK,          10
+        .equ    V_DEP,          6                 | lite: DRK (E)
+        .equ    V_CMB,          8                 | lite: SAT (F)
+        .equ    V_CMK,          10                | lite: TRM (G)
         .equ    V_RNG,          12
-        .equ    V_OCT,          14
+        .equ    V_OCT,          14                | lite: WID (A)
         .equ    S_CON,          0                 | rv2_st
         .equ    S_CWP,          4
         .equ    S_PPH,          8
@@ -1271,17 +1277,19 @@ rev_pages:
         .equ    S_HDL,          80                | the chorus delays, 16.16
         .equ    S_HDR,          84
         .equ    S_DR,           88
-        .equ    S_OLP,          92                | the octaver: its lowpass
-        .equ    S_OST,          96                | bit 0 above, bit 1 the flip-flop
-        .equ    P_CMN,          0                 | rv2_prm
-        .equ    P_CMG,          4
+        .equ    S_DRL,          100               | lite: DRK's lowpass, left
+        .equ    S_DRR,          104               | and right
+        .equ    S_TPH,          108               | TRM's phase
+        .equ    P_DRK,          0                 | rv2_prm: DRK's coefficient, Q15
+        .equ    P_SAT,          4                 | SAT's drive, Q8
         .equ    P_PAL,          8
         .equ    P_RINC,         12
         .equ    P_HIS,          16
         .equ    P_CDEP,         20
         .equ    P_CINC,         24
         .equ    P_MIX,          28                | 0.6, Q14
-        .equ    P_OCT,          32                | the octave's level, Q15
+        .equ    P_WID,          32                | WID's side gain, Q8
+        .equ    P_TRM,          36                | TRM's step a pair
 
         .section .rv2,"ax"
         .align  2
@@ -1311,6 +1319,8 @@ fxs_put:
         rts
 1:      jmp     FXPUT_STOCK
 
+        .section .ph,"ax"                         | lite: the phaser, out of cave31
+        .align  2
         | ------------------------------------------------------------------
         | ph_go(a1 32 stereo frames): the phaser at FX word 29's rate, a pair
         | of frames at a time on their mono sum; the change (out - in) is
@@ -1427,91 +1437,87 @@ r2_sat:
 1:      move.l  #0x7fffffff,%d2
         rts
 
+        .section .rv2,"ax"
+        .align  2
+
         | ------------------------------------------------------------------
-        | rv2_go(a1 the reverb's output, 32 stereo frames): comb, ring, hiss,
-        | a pair of frames at a time. Uses d0..d7, a0, a2..a5; keeps a6.
+        | rv2_go(a1 the return, 32 stereo frames): DRK, SAT, RNG, TRM, WID,
+        | HIS, those rv2_mask places here, a pair of frames at a time.
+        | Uses d0..d7, a0, a2, a3; keeps a4..a6.
         | ------------------------------------------------------------------
 rv2_go:
         lea     rv2_val,%a0
         lea     rv2_prm,%a2
         lea     rv2_st,%a3
-        moveq   #0,%d7                            | bits: 0 comb, 1 ring, 2 octave, 3 hiss
-        mvz.w   V_CMB(%a0),%d0
+        moveq   #0,%d7                            | bits: 0 SAT, 1 RNG, 2 WID, 3 HIS, 4 TRM, 5 DRK
+        mvz.w   V_CMB(%a0),%d0                    | SAT: 1 + v / 16, Q8
         lsr.l   #8,%d0
-        bne.s   1f
-        clr.l   S_CON(%a3)
-        bra.s   2f
-1:      bset    #0,%d7
-        move.l  %d0,%d1
-        moveq   #15,%d2
-        and.l   %d2,%d1
-        lea     cmb_frac,%a4
-        mvz.w   (%a4,%d1.l*2),%d1                 | 2^(-k / 16), Q16
-        lsr.l   #4,%d0                            | whole octaves
-        moveq   #9,%d2                            | 512 pairs at the bottom: 47 Hz
-        sub.l   %d0,%d2
-        moveq   #1,%d3
-        lsl.l   %d2,%d3
-        mulu.l  %d1,%d3
-        clr.w   %d3
-        swap    %d3                               | the comb's length, in pairs
-        moveq   #2,%d2
-        cmp.l   %d2,%d3
-        bge.s   21f
-        move.l  %d2,%d3
-21:     move.l  %d3,P_CMN(%a2)
-        mvz.w   V_CMK(%a0),%d0
+        beq.s   1f
+        bset    #0,%d7
+        lsl.l   #4,%d0
+        add.l   #256,%d0
+        move.l  %d0,P_SAT(%a2)
+1:      mvz.w   V_RNG(%a0),%d0
         lsr.l   #8,%d0
-        muls.w  #240,%d0
-        move.l  %d0,P_CMG(%a2)
-        tst.l   S_CON(%a3)
-        bne.s   2f
-        lea     CMBBUF,%a4                        | the comb comes on: a clean line
-        move.l  #(CMB_MASK+1)/2,%d0
-        moveq   #0,%d1
-22:     move.l  %d1,(%a4)+
-        subq.l  #1,%d0
-        bne.s   22b
-        moveq   #1,%d0
-        move.l  %d0,S_CON(%a3)
-2:      mvz.w   V_RNG(%a0),%d0
-        lsr.l   #8,%d0
-        beq.s   4f
+        beq.s   2f
         bset    #1,%d7
         move.l  %d0,%d1
         moveq   #15,%d2
         and.l   %d2,%d1
-        lea     pow16,%a4
-        mvz.w   (%a4,%d1.l*2),%d1                 | 256 * 2^(k / 16)
+        lea     pow16,%a3
+        mvz.w   (%a3,%d1.l*2),%d1                 | 256 * 2^(k / 16)
         muls.w  #13981,%d1                        | 20 Hz at 24 kHz, >> 8
         lsr.l   #4,%d0
         lsl.l   %d0,%d1                           | the carrier's step
         move.l  %d1,P_RINC(%a2)
-4:      mvz.w   V_HIS(%a0),%d0
+2:      mvz.w   V_HIS(%a0),%d0
         lsr.l   #8,%d0
-        beq.s   5f
+        beq.s   3f
         bset    #3,%d7
         muls.w  %d0,%d0
         lsr.l   #6,%d0                            | to 252, Q15: -42 dB
         move.l  %d0,P_HIS(%a2)
-5:      mvz.w   V_OCT(%a0),%d0
+3:      mvz.w   V_OCT(%a0),%d0                    | WID: 1 + v / 32, Q8
         lsr.l   #8,%d0
-        beq.s   51f
+        beq.s   4f
         bset    #2,%d7
-        muls.w  #258,%d0                          | to 32766, Q15
-        move.l  %d0,P_OCT(%a2)
-51:     tst.l   %d7
-        bne.s   52f
-        clr.l   S_PREV(%a3)
+        lsl.l   #3,%d0
+        add.l   #256,%d0
+        move.l  %d0,P_WID(%a2)
+4:      mvz.w   V_CMK(%a0),%d0                    | TRM: 0.1 * 2^(v / 16) Hz
+        lsr.l   #8,%d0
+        beq.s   5f
+        bset    #4,%d7
+        move.l  %d0,%d1
+        moveq   #15,%d2
+        and.l   %d2,%d1
+        lea     pow16,%a3
+        mvz.w   (%a3,%d1.l*2),%d1
+        muls.w  #70,%d1                           | 0.1 Hz at 24 kHz, >> 8
+        lsr.l   #4,%d0
+        lsl.l   %d0,%d1
+        move.l  %d1,P_TRM(%a2)
+5:      mvz.w   V_DEP(%a0),%d0                    | DRK: (140 - v)^2 27 / 16, Q15
+        lsr.l   #8,%d0
+        beq.s   6f
+        bset    #5,%d7
+        neg.l   %d0
+        add.l   #140,%d0
+        muls.w  %d0,%d0
+        muls.w  #27,%d0
+        lsr.l   #4,%d0
+        cmp.l   #32767,%d0
+        bls.s   51f
+        move.l  #32767,%d0
+51:     move.l  %d0,P_DRK(%a2)
+6:      lea     rv2_st,%a3
+        and.l   rv2_mask,%d7                      | those in this place
+        bne.s   7f
         rts
-52:     and.l   rv2_mask,%d7                      | those in this place
-        bne.s   6f
-        rts
-6:      lea     CMBBUF,%a4
-        moveq   #FRAMES/2,%d0
+7:      moveq   #FRAMES/2,%d0
         move.l  %d0,S_CNT(%a3)
 
-7:      move.l  (%a1),%d0                         | a pair: l0, r0, l1, r1
+8:      move.l  (%a1),%d0                         | a pair: l0, r0, l1, r1
         swap    %d0
         ext.l   %d0
         move.l  4(%a1),%d1
@@ -1523,41 +1529,57 @@ rv2_go:
         move.l  12(%a1),%d3
         swap    %d3
         ext.l   %d3
-        btst    #0,%d7
-        beq.w   30f
-        move.l  %d0,%d4                           | the mono sum
-        add.l   %d1,%d4
-        add.l   %d2,%d4
-        add.l   %d3,%d4
-        asr.l   #2,%d4
-        movea.l %d4,%a5
-        move.l  S_CWP(%a3),%d6                    | the comb: x + g (line - x)
-        move.l  %d6,%d5
-        sub.l   P_CMN(%a2),%d5
-        and.l   #CMB_MASK,%d5
-        mvs.w   (%a4,%d5.l*2),%d5
-        sub.l   %d4,%d5
-        muls.l  P_CMG(%a2),%d5
-        asr.l   #8,%d5
-        asr.l   #7,%d5
-        add.l   %d5,%d4
-        move.w  %d4,(%a4,%d6.l*2)
-        addq.l  #1,%d6
-        and.l   #CMB_MASK,%d6
-        move.l  %d6,S_CWP(%a3)
-        sub.l   %a5,%d4                           | the change
-        move.l  S_PREV(%a3),%d5
-        move.l  %d4,S_PREV(%a3)
-        add.l   %d4,%d5
-        asr.l   #1,%d5                            | the first frame's: the mean
-        add.l   %d5,%d0
-        add.l   %d5,%d1
-        add.l   %d4,%d2
-        add.l   %d4,%d3
 
-30:     btst    #1,%d7
-        beq.s   40f
-        move.l  S_RPH(%a3),%d4                    | the ring: a sine, a pair's
+        btst    #5,%d7                            | DRK: y += c (x - y), a side
+        beq.w   20f
+        move.l  P_DRK(%a2),%d6
+        move.l  S_DRL(%a3),%d4
+        move.l  S_DRR(%a3),%d5
+        .irp    r,%d0,%d2
+        sub.l   %d4,\r
+        muls.l  %d6,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        add.l   %d4,\r
+        move.l  \r,%d4
+        .endr
+        .irp    r,%d1,%d3
+        sub.l   %d5,\r
+        muls.l  %d6,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        add.l   %d5,\r
+        move.l  \r,%d5
+        .endr
+        move.l  %d4,S_DRL(%a3)
+        move.l  %d5,S_DRR(%a3)
+
+20:     btst    #0,%d7                            | SAT
+        beq.w   30f
+        move.l  P_SAT(%a2),%d6
+        .irp    r,%d0,%d1,%d2,%d3
+        muls.l  %d6,\r
+        asr.l   #8,\r
+        cmp.l   #32767,\r
+        ble.s   1f
+        move.l  #32767,\r
+1:      cmp.l   #-32767,\r
+        bge.s   2f
+        move.l  #-32767,\r
+2:      move.l  \r,%d4
+        muls.l  %d4,%d4
+        clr.w   %d4
+        swap    %d4
+        neg.l   %d4
+        add.l   #49152,%d4                        | 1.5 - u^2 / 2
+        muls.l  %d4,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        .endr
+
+30:     btst    #1,%d7                            | RNG: a sine, a pair's
+        beq.w   40f
+        move.l  S_RPH(%a3),%d4
         add.l   P_RINC(%a2),%d4
         move.l  %d4,S_RPH(%a3)
         swap    %d4
@@ -1570,59 +1592,71 @@ rv2_go:
         muls.l  %d5,%d4
         moveq   #13,%d5
         asr.l   %d5,%d4                           | 4x(1 - |x|), Q15
-        muls.l  %d4,%d0
-        asr.l   #8,%d0
-        asr.l   #7,%d0
-        muls.l  %d4,%d1
-        asr.l   #8,%d1
-        asr.l   #7,%d1
-        muls.l  %d4,%d2
-        asr.l   #8,%d2
-        asr.l   #7,%d2
-        muls.l  %d4,%d3
-        asr.l   #8,%d3
-        asr.l   #7,%d3
+        .irp    r,%d0,%d1,%d2,%d3
+        muls.l  %d4,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        .endr
 
-40:     btst    #2,%d7                            | the octave down: the mono sum
-        beq.s   45f                               | lowpassed (480 Hz), times a
-        move.l  %d0,%d4                           | flip-flop that turns at every
-        add.l   %d1,%d4                           | other zero crossing
-        add.l   %d2,%d4
-        add.l   %d3,%d4
-        asr.l   #2,%d4
-        move.l  S_OLP(%a3),%d5
-        sub.l   %d5,%d4
-        asr.l   #3,%d4
-        add.l   %d4,%d5
-        move.l  %d5,S_OLP(%a3)
-        move.l  S_OST(%a3),%d6
-        btst    #0,%d6
-        bne.s   41f
-        moveq   #64,%d4                           | rising past +64: the flip
-        cmp.l   %d4,%d5
-        ble.s   43f
-        bset    #0,%d6
-        bchg    #1,%d6
-        bra.s   43f
-41:     moveq   #-64,%d4                          | falling past -64: re-armed
-        cmp.l   %d4,%d5
-        bge.s   43f
-        bclr    #0,%d6
-43:     move.l  %d6,S_OST(%a3)
-        btst    #1,%d6
-        beq.s   44f
+40:     btst    #4,%d7                            | TRM: the pan, a pair's
+        beq.w   45f
+        move.l  S_TPH(%a3),%d4
+        add.l   P_TRM(%a2),%d4
+        move.l  %d4,S_TPH(%a3)
+        swap    %d4
+        ext.l   %d4
+        move.l  %d4,%d5
+        bpl.s   41f
         neg.l   %d5
-44:     asr.l   #1,%d5
-        muls.l  P_OCT(%a2),%d5
-        asr.l   #8,%d5
-        asr.l   #5,%d5                            | twice the level
-        add.l   %d5,%d0
-        add.l   %d5,%d1
-        add.l   %d5,%d2
-        add.l   %d5,%d3
+41:     neg.l   %d5
+        add.l   #32768,%d5
+        muls.l  %d5,%d4
+        moveq   #13,%d5
+        asr.l   %d5,%d4                           | p, -1..1, Q15
+        move.l  #32768,%d5                        | gL in d5, gR in d6
+        move.l  %d5,%d6
+        tst.l   %d4
+        bmi.s   42f
+        sub.l   %d4,%d5                           | to the right: left down
+        bra.s   43f
+42:     add.l   %d4,%d6                           | to the left: right down
+43:     .irp    r,%d0,%d2
+        muls.l  %d5,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        .endr
+        .irp    r,%d1,%d3
+        muls.l  %d6,\r
+        asr.l   #8,\r
+        asr.l   #7,\r
+        .endr
 
-45:     btst    #3,%d7
-        beq.s   50f
+45:     btst    #2,%d7                            | WID: m + s w, m - s w
+        beq.w   47f
+        move.l  P_WID(%a2),%d6
+        move.l  %d0,%d4
+        add.l   %d1,%d4
+        asr.l   #1,%d4                            | m
+        sub.l   %d1,%d0
+        asr.l   #1,%d0                            | s
+        muls.l  %d6,%d0
+        asr.l   #8,%d0
+        move.l  %d4,%d1
+        sub.l   %d0,%d1
+        add.l   %d4,%d0
+        move.l  %d2,%d4
+        add.l   %d3,%d4
+        asr.l   #1,%d4
+        sub.l   %d3,%d2
+        asr.l   #1,%d2
+        muls.l  %d6,%d2
+        asr.l   #8,%d2
+        move.l  %d4,%d3
+        sub.l   %d2,%d3
+        add.l   %d4,%d2
+
+47:     btst    #3,%d7
+        beq.w   50f
         move.l  S_SEED(%a3),%d4                   | the hiss, a pair's
         move.l  #1664525,%d5
         mulu.l  %d5,%d4
@@ -1661,44 +1695,46 @@ rv2_go:
         move.l  \r,(%a1)+
         .endr
         subq.l  #1,S_CNT(%a3)
-        bne.w   7b
+        bne.w   8b
         rts
 
         .section .rv2,"ax"
 
         .align  2
 rv2_val:
-        .word   0, 0, 0, 0x4000, 0, 0x4000, 0, 0
+        .word   0, 0, 0, 0, 0, 0, 0, 0
 rv2_def:
-        .word   0, 0, 0, 0x4000, 0, 0x4000, 0, 0
+        .word   0, 0, 0, 0, 0, 0, 0, 0
 rv2_st:
         .long   0, 0, 0, 0, 0, 0x2545f491, 0, 0, 0, 0, 0, 0
-        .long   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        .long   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 rv2_prm:
-        .long   0, 0, 0, 0, 0, 0, 0, 9830, 0
+        .long   0, 0, 0, 0, 0, 0, 0, 9830, 0, 0
 oct_ld:
         .word   0
         .align  2
-txt_r2oct_l:    .asciz  "Octaver"
+txt_r2oct_l:    .asciz  "Width"
         .align  2
         | REVERB 2's short names that r2_label marks, 8 bytes each, in
-        | r2_slot's order.
-txt_r2oct_s:    .ascii  "OCT\0\0\0\0\0"
+        | r2_slot's order (lite: OCT is WID, CMB SAT, CMK TRM, DEP DRK).
+txt_r2oct_s:    .ascii  "WID\0\0\0\0\0"
 txt_r2his_s:    .ascii  "HIS\0\0\0\0\0"
-txt_r2cmb_s:    .ascii  "CMB\0\0\0\0\0"
-txt_r2cmk_s:    .ascii  "CMK\0\0\0\0\0"
+txt_r2cmb_s:    .ascii  "SAT\0\0\0\0\0"
+txt_r2cmk_s:    .ascii  "TRM\0\0\0\0\0"
 txt_r2rng_s:    .ascii  "RNG\0\0\0\0\0"
+txt_r2dep_s:    .ascii  "DRK\0\0\0\0\0"
 r2_slot:                                          | each name's route bit
-        .byte   2, 3, 0, 0, 1
-        | Each record's route bit, 334..341, -1 none (SRR, CHR, DEP have their own).
+        .byte   2, 3, 0, 4, 1, 5
+        | Each record's route bit, 334..341, -1 none (SRR and 12B have their own).
 r2_rbit:
-        .byte   -1, 3, -1, -1, 0, 0, 1, 2
+        .byte   -1, 3, -1, 5, 0, 4, 1, 2
         .align  2
 rv2_mask:
         .long   0
 
-        | cfg_r2r -> d0 REVERB 2's route mask (bit 0 comb, 1 ring, 2 octave,
-        | 3 hiss; set: on the delay's input), 0 without a record. Uses d0, a0.
+        | cfg_r2r -> d0 REVERB 2's route mask (bit 0 SAT, 1 RNG, 2 WID, 3 HIS,
+        | 4 TRM, 5 DRK; set: on the delay's input), 0 without a record. Uses
+        | d0, a0.
 cfg_r2r:
         jsr     cfg_ok
         bne.s   1f
@@ -1714,7 +1750,7 @@ r2_label:
         jsr     cfg_r2r
         lea     r2_slot,%a1
         lea     txt_r2oct_s+3,%a0
-        moveq   #5,%d2
+        moveq   #6,%d2
 1:      mvz.b   (%a1)+,%d1
         btst    %d1,%d0
         sne     %d1
@@ -1768,7 +1804,10 @@ rv2_save:
 rv2_load:
         mvz.b   R2OFF(%a1),%d0
         cmp.l   #R2TAG,%d0
+        beq.s   0f
+        cmp.l   #R2TAG_OLD,%d0
         bne.s   rv2_init
+0:      move.l  %d0,-(%sp)
         lea     rv2_val,%a0
         moveq   #1,%d1
 1:      mvz.b   R2OFF(%a1,%d1.l),%d0
@@ -1779,7 +1818,14 @@ rv2_load:
         moveq   #R2S+1,%d0
         cmp.l   %d0,%d1
         blt.s   1b
-        rts
+        move.l  (%sp)+,%d0
+        cmp.l   #R2TAG,%d0
+        beq.s   2f
+        moveq   #0,%d0                            | lite: a kit from before reads
+        move.w  %d0,V_DEP(%a0)                    | DRK, SAT and TRM as 0 (they
+        move.w  %d0,V_CMB(%a0)                    | held the chorus depth and
+        move.w  %d0,V_CMK(%a0)                    | the comb)
+2:      rts
 
         | rv2_init: the records' defaults. Uses d0, a0.
 rv2_init:
@@ -1795,15 +1841,12 @@ rv2_init:
         rts
 
         .align  2
-cmb_frac:                                         | 65536 * 2^(-k / 16)
-        .word   65535, 62757, 60097, 57549, 55109, 52773, 50535, 48393, 46341, 44376, 42495, 40693, 38968, 37316, 35734, 34219
 pow16:                                            | 256 * 2^(k / 16)
         .word   256, 267, 279, 292, 304, 318, 332, 347, 362, 378, 395, 412, 431, 450, 470, 490
 txt_r2his_l:    .asciz  "Hiss"
-txt_r2dep_l:    .asciz  "Chorus Depth"
-txt_r2dep_s:    .asciz  "DEP"
-txt_r2cmb_l:    .asciz  "Comb Tune"
-txt_r2cmk_l:    .asciz  "Comb Feedback"
+txt_r2dep_l:    .asciz  "Darken"
+txt_r2cmb_l:    .asciz  "Saturate"
+txt_r2cmk_l:    .asciz  "Tremolo"
 txt_r2rng_l:    .asciz  "Ring Mod"
 txt_r2chr_l:    .asciz  "12-Bit FX"
 txt_phs_long:   .asciz  "Phaser Rate"

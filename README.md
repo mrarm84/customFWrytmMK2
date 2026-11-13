@@ -62,6 +62,14 @@ about 1,100 instructions a block against about 1,500 for the old path with
 every filter off. Not measurable in the emulator (Unicorn mis-decodes `msac`
 with a load), not yet run on a unit.
 
+**REVERB 2 and degrade.** The comb (CMB, CMK) and the octaver are out; REVERB 2
+is WID SRR HIS 12B / DRK SAT TRM RNG: stereo width, darken (a lowpass),
+saturation and auto-pan, each nothing at 0 and about 1,300..2,000 instructions a
+block on (emulator). The phaser moved to cave21 to make room. DEGRADE on LFO RND's
+G and H (SRD downsample, BIT bit depth), per sound, in 0013's FRQ and DEP fields:
+with DAC SUM off only degraded tracks' voices leave the analog bus. The idle
+tick refreshes the per-track values every fourth tick.
+
 **Portamento.** GLD (OFF/ON, default OFF) and TIM on LFO RND's page (0004,
 knobs C and D), per sound. A detour at the audio interrupt's machine call
 (0x401211ce) glides each voice's pitch argument toward the played note,

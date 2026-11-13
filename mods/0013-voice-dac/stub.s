@@ -313,7 +313,11 @@ route_all:
         tst.l   dac_on
         beq.s   1f
         moveq   #-1,%d1
-1:      move.b  %d1,0x80006466                    | displaced
+        bra.s   2f
+1:      tst.l   deg_tracks                        | lite: DAC SUM off, the voices
+        beq.s   2f                                | of degraded tracks still go
+        jsr     deg_route                         | through the DAC
+2:      move.b  %d1,0x80006466                    | displaced
         jmp     ROUTE_RESUME
 
         | ------------------------------------------------------------------
@@ -381,10 +385,12 @@ vs_body:
         .endif
         tst.l   dac_on
         bne.s   1f
+        tst.l   deg_tracks                        | lite: or a degraded track
+        bne.s   1f
         .if     P_TIMING
         jsr     t_end
         .endif
-        rts                                       | DAC SUM off: no filter, no sum
+        rts                                       | DAC SUM off: no sum
 1:      lea     -160(%sp),%sp
         movem.l %d0-%d7/%a0-%a6,(%sp)             | 60 B; (cL, cR) at +60, 68 B
         move.l  %macsr,%d0
@@ -405,6 +411,11 @@ vs_body:
         lea     VOICE_OWNER,%a0
         lea     gaintab,%a2
         lea     pan_cache,%a6
+        moveq   #-1,%d0                           | the tracks in the sum: all with
+        tst.l   dac_on                            | DAC SUM on, else the degraded
+        bne.s   1f                                | ones (lite)
+        move.l  deg_tracks,%d0
+1:      movea.l %d0,%a5
         moveq   #0,%d5                            | physical voice
 2:      move.l  (%a3)+,%d3
         lsl.l   #3,%d3                            | slot * 8, one (cL, cR)
@@ -413,7 +424,11 @@ vs_body:
         asr.l   %d2,%d4
         moveq   #1,%d1
         and.l   %d1,%d4                           | off the main bus
-        lsl.l   #8,%d4
+        move.l  %a5,%d1
+        btst    %d2,%d1
+        bne.s   1f
+        moveq   #1,%d4                            | or not in the sum: as off
+1:      lsl.l   #8,%d4
         or.l    %d3,%d4                           | aux: slot * 8 | off << 8
         mvz.w   (%a1),%d0                         | wL
         mvz.w   VCA_R-VCA_L(%a1),%d1              | wR
@@ -458,6 +473,10 @@ vs_body:
         cmp.l   %d0,%d5
         blt.w   2b
 
+        tst.l   deg_tracks                        | lite: the degraded voices,
+        beq.s   1f                                | in place, before the sum and
+        jsr     deg_run                           | everything that reads them
+1:
         | The sum into the PRE pair itself: each side's accumulator starts
         | from its PRE word (stored as acc >> 8, logical, so << 8 is its Q31
         | value again), the voices are subtracted - the PRE pair is inverted
@@ -764,7 +783,7 @@ page_hpf_off:
         | Without 0019 nothing shows the page.
 page_rev2:
         .long   txt_rev2
-        .long   341, 334, 335, 336, 0, 338, 339, 340  | D 12B; E empty
+        .long   341, 334, 335, 336, 337, 338, 339, 340  | lite: WID SRR HIS 12B / DRK SAT TRM RNG
         | The FILTER view's page vector, FILTER and then DAC FILTER.
 filter_pages:
         .long   PAGE_FILTER, PAGE_HPF
@@ -1069,6 +1088,10 @@ hpf_refresh:
         move.l  8(%fp),%a2                        | displaced
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
+        subq.l  #1,ref_cnt                        | lite: the per-track values every
+        bgt.w   6f                                | fourth tick (a turn sets its own
+        moveq   #4,%d0                            | track's at once)
+        move.l  %d0,ref_cnt
         moveq   #0,%d2                            | track
 1:      move.l  %d2,%d0
         jsr     shared_sound_of
@@ -1082,7 +1105,7 @@ hpf_refresh:
         jsr     shp_entry
         bra.s   4f
 3:      moveq   #0,%d0
-        moveq   #0,%d3
+        move.l  #FLT_DEFAULT,%d3                  | lite: no sound, no degrade
 4:      lea     hpf_track,%a0
         move.l  %d3,(%a0,%d2.l*4)
         move.l  %d0,48(%a0,%d2.l*4)               | shp_track
@@ -1099,6 +1122,7 @@ hpf_refresh:
         and.l   #0xffff0000,%d0
         move.l  %d0,shp_any
         jsr     flt_knobs
+        jsr     deg_scan
 6:      bsr.w   dac_active                        | DAC SUM: the active record's
         bsr.w   dac_find
         tst.l   %d0
@@ -1311,17 +1335,17 @@ txt_page:
 txt_rev2:
         .asciz  "REVERB 2"
 txt_frq_long:
-        .asciz  "Frequency"
+        .asciz  "Downsample"                      | lite: FRQ's field is SRD
 txt_frq_short:
-        .asciz  "FRQ"
+        .asciz  "SRD"
 txt_typ_long:
         .asciz  "Filter Type"
 txt_typ_short:
         .asciz  "TYP"
 txt_dep_long:
-        .asciz  "Depth"
+        .asciz  "Bit Depth"                       | lite: DEP's field is BIT
 txt_dep_short:
-        .asciz  "DEP"
+        .asciz  "BIT"
 txt_res_long:
         .asciz  "Porta Time"                      | lite: RES's field is TIM
 txt_res_short:
@@ -2294,7 +2318,12 @@ hpf_get:
         jsr     flt_cur
         lsr.l   %d2,%d0
         and.l   #0xff,%d0
-        lsl.l   #8,%d0
+        move.l  20(%sp),%d1
+        jsr     deg_ours
+        bne.s   21f
+        neg.l   %d0                               | lite: SRD and BIT, 127 less
+        add.l   #127,%d0                          | the field
+21:     lsl.l   #8,%d0
         movem.l (%sp),%d2-%d3/%a2                 | page_get_value's epilogue
         lea     12(%sp),%sp
         rts
@@ -2345,6 +2374,10 @@ hpf_delta:
         move.l  %d0,%d2
         bra.s   8f
 4:      asr.l   #8,%d2                            | whole steps, sign preserved
+        move.l  24(%sp),%d1
+        jsr     deg_ours
+        bne.s   8f
+        neg.l   %d2                               | lite: SRD and BIT run the other way
 8:      tst.l   %d2
         beq.w   7f
         move.l  24(%sp),%d0                       | the id
@@ -2560,9 +2593,12 @@ hpf_text:
         and.l   #0xff,%d0
         lsl.l   #8,%d0
         move.l  %d0,%d2                           | the value, 8.8
-        cmp.l   #ID_FRQ,%d4
+        move.l  %d4,%d1
+        jsr     deg_ours
         bne.s   8f
-        moveq   #ID_STOCK_FRQ,%d4
+        neg.l   %d2                               | lite: SRD and BIT, plain
+        add.l   #127 << 8,%d2                     | numbers, as RES's popup
+        moveq   #ID_STOCK_RES,%d4
         bra.w   9f
 8:      cmp.l   #ID_RES,%d4
         bne.s   1f
@@ -3476,4 +3512,142 @@ porta_k:
         .word   107, 101, 96, 90, 85, 80, 76, 72
         .word   68, 64, 60, 57, 54, 51, 48, 45
         .word   43, 40, 38, 36, 34, 32, 30, 28
+        .text
+
+        | ------------------------------------------------------------------
+        | DEGRADE (lite), knobs G and H of LFO RND's page (0004): SRD, the
+        | old FRQ field, holds each sample SRD + 1 times (0 off, 1 24 kHz,
+        | 127 375 Hz); BIT, the old DEP field, keeps the sample's top 16 -
+        | BIT * 15 / 127 bits (0 off, 127 one bit). Per sound, kept as FRQ and
+        | DEP were (the fields hold 127 - SRD and 127 - BIT, so 0 is off).
+        | The voices are analog to the mix, so a degraded voice goes through
+        | the DAC: with DAC SUM on every voice does already; with it off only
+        | the voices of the degraded tracks are taken off the analog bus
+        | (route_all) and summed (vs_body), the rest stay analog.
+        | ------------------------------------------------------------------
+        .section .deg,"ax"
+        .align  2
+
+        | deg_ours(d1 = id) -> Z set for ID_FRQ and ID_DEP. Keeps d0.
+deg_ours:
+        cmp.l   #ID_FRQ,%d1
+        beq.s   9f
+        cmp.l   #ID_DEP,%d1
+9:      rts
+
+        | deg_scan: deg_tracks, a bit a track with SRD or BIT, from hpf_track.
+        | The idle tick's. Clobbers d0..d2, a0.
+deg_scan:
+        lea     hpf_track,%a0
+        moveq   #0,%d1
+        moveq   #VOICE_TRACKS-1,%d0
+1:      move.l  (%a0,%d0.l*4),%d2
+        and.l   #0x7f7f00,%d2
+        cmp.l   #0x7f7f00,%d2                     | FRQ and DEP 127: none
+        beq.s   2f
+        bset    %d0,%d1
+2:      subq.l  #1,%d0
+        bpl.s   1b
+        move.l  %d1,deg_tracks
+        rts
+
+        | deg_route(d1 = the route mask byte, voices 7 6 5 4 0 1 2 3 from bit
+        | 7 down): each voice whose track is degraded taken off the analog
+        | bus. Keeps all but d1.
+deg_route:
+        lea     -20(%sp),%sp
+        movem.l %d0/%d2-%d3/%a0-%a1,(%sp)
+        move.l  deg_tracks,%d2
+        lea     VOICE_OWNER,%a0
+        lea     deg_bit,%a1
+        moveq   #7,%d0
+1:      mvz.b   (%a0,%d0.l),%d3                   | the voice's track
+        btst    %d3,%d2
+        beq.s   2f
+        mvz.b   (%a1,%d0.l),%d3
+        bset    %d3,%d1
+2:      subq.l  #1,%d0
+        bpl.s   1b
+        movem.l (%sp),%d0/%d2-%d3/%a0-%a1
+        lea     20(%sp),%sp
+        rts
+deg_bit:                                          | voice v's bit in the mask
+        .byte   3, 2, 1, 0, 4, 5, 6, 7
+        .align  2
+
+        | deg_run: each voice whose track has SRD or BIT, its receive slot
+        | in place, 32 frames. From vs_body, which saved every register;
+        | clobbers all but sp.
+deg_run:
+        moveq   #0,%d7                            | physical voice
+1:      lea     VOICE_OWNER,%a0
+        mvz.b   (%a0,%d7.l),%d0
+        lea     hpf_track,%a0
+        move.l  (%a0,%d0.l*4),%d5
+        move.l  %d5,%d4
+        swap    %d4
+        and.l   #0x7f,%d4
+        neg.l   %d4
+        add.l   #127,%d4                          | SRD
+        lsr.l   #8,%d5
+        and.l   #0x7f,%d5
+        neg.l   %d5
+        add.l   #127,%d5                          | BIT
+        move.l  %d4,%d0
+        or.l    %d5,%d0
+        beq.w   9f
+        moveq   #-1,%d6                           | the mask: BIT 0 keeps all
+        tst.l   %d5
+        beq.s   5f
+        mulu.w  #15,%d5                           | else 16 - BIT 15 / 127 bits
+        add.l   #63,%d5                           | kept
+        divu.w  #127,%d5
+        and.l   #0xffff,%d5
+        add.l   #16,%d5                           | 32 - kept: the bits dropped
+        lsl.l   %d5,%d6
+5:      lea     SLOT_MAP,%a0
+        move.l  (%a0,%d7.l*4),%d0                 | the slot
+        move.l  %d0,%d1
+        lsl.l   #3,%d1
+        lea     deg_state,%a2
+        adda.l  %d1,%a2                           | its count and held sample
+        lsl.l   #2,%d0
+        lea     RXBUF+8,%a1
+        adda.l  %d0,%a1                           | its column
+        move.l  (%a2),%d2                         | count
+        move.l  4(%a2),%d3                        | held
+        moveq   #FRAMES,%d1
+        tst.l   %d4
+        bne.s   3f
+2:      move.l  (%a1),%d0                         | BIT alone
+        and.l   %d6,%d0
+        move.l  %d0,(%a1)
+        lea     RXSTRIDE(%a1),%a1
+        subq.l  #1,%d1
+        bne.s   2b
+        bra.s   8f
+3:      subq.l  #1,%d2                            | SRD (and BIT)
+        bpl.s   4f
+        move.l  %d4,%d2
+        move.l  (%a1),%d3
+        and.l   %d6,%d3
+4:      move.l  %d3,(%a1)
+        lea     RXSTRIDE(%a1),%a1
+        subq.l  #1,%d1
+        bne.s   3b
+8:      move.l  %d2,(%a2)
+        move.l  %d3,4(%a2)
+9:      addq.l  #1,%d7
+        moveq   #8,%d0
+        cmp.l   %d0,%d7
+        blt.w   1b
+        rts
+
+        .align  2
+deg_tracks:
+        .long   0
+ref_cnt:
+        .long   0
+deg_state:                                        | per slot: count, held
+        .space  8 * 8
         .text

@@ -1487,6 +1487,20 @@ size    = 0x1f0
 section = ".porta"
 note    = "lite: porta, its per-voice pitch and the glide table."
 
+[[cave]]
+owner   = "0013-voice-dac"
+addr    = 0x40136520
+size    = 0x1b6
+section = ".deg"
+note    = "lite: DEGRADE (SRD, BIT): the voices' pass, the route of degraded voices, the idle tick's scan."
+
+[[cave]]
+owner   = "0019-reverb-srr"
+addr    = 0x4013788e
+size    = 0x1ba
+section = ".ph"
+note    = "lite: the phaser (ph_go, r2_sat), moved out of cave31 for REVERB 2's new effects."
+
 [[detour]]
 owner  = "0013-voice-dac"
 addr   = 0x401212b6
@@ -4714,13 +4728,13 @@ size    = 4
 expect  = "40237471"
 from_symbol = "txt_chr_short"
 
-# Record 337: DEP, REVERB 2 E: chorus depth. Kind REVERB (0x38), word 45 (past stock's 41, so its FX get and write refuse it), 0..0x7f00, default 0x4000, modflags 0 (no locks or LFO). Was BD HARD 2's; that machine stays hidden.
+# Record 337: DRK (lite; was DEP, chorus depth), REVERB 2 E: darken. Kind REVERB (0x38), word 45 (past stock's 41, so its FX get and write refuse it), 0..0x7f00, default 0x0 (lite), modflags 0 (no locks or LFO). Was BD HARD 2's; that machine stays hidden.
 [[patch]]
 owner   = "0019-reverb-srr"
 addr    = 0x401c3d8c
 size    = 40
 expect  = "000000230000000b0000000000007f0000002f00000000000012ffff000000820000000000000600"
-replace = "000000380000002d0000000000007f000000400000000000ffffffffffffffff0000000000000000"
+replace = "000000380000002d0000000000007f000000000000000000ffffffffffffffff0000000000000000"
 
 [[patch]]
 owner   = "0019-reverb-srr"
@@ -4778,7 +4792,7 @@ owner   = "0019-reverb-srr"
 addr    = 0x401c3df4
 size    = 40
 expect  = "000000230000000e0000000000007f0000000600000000000015ffff000000850000000000000600"
-replace = "000000380000002f0000000000007f000000400000000000ffffffffffffffff0000000000000000"
+replace = "000000380000002f0000000000007f000000000000000000ffffffffffffffff0000000000000000"
 
 [[patch]]
 owner   = "0019-reverb-srr"
