@@ -128,6 +128,17 @@ The kit menu's reload behaves the same way; reloading all kits is stock.
 
 ## 0013 - DAC sum, filter and shaper
 
+**Lite build: DAC SUM only.** The per-track DAC FILTER (FRQ, RES, TYP, DEP), the
+transient shaper (ATK, SUS) and POL are removed from the audio path, and the DAC
+FILTER page no longer opens: pressing FILTER again stays on the stock page. DAC
+SUM itself works as below (GLOBAL > AUDIO ROUTING > DAC SUM). To filter the
+voices digitally, use the DIST filter (0019) on the DISTORTION page, which acts
+on the summed voices before the analog distortion, with its own on/off in AUDIO
+ROUTING. The sum is voice-dac 1.7's faster one (pan split cached, two frames at a
+time, nothing to multiply when no voice is on the bus). Values set on the DAC
+FILTER page in an earlier build stay in the sounds but are ignored. Everything
+below about the DAC FILTER page, the shaper and POL describes the full build.
+
 Adds a filter, a transient shaper and a polarity switch to every voice, after
 its analog filter, on a second FILTER page.
 The Rytm's voices are analog all the way to the mix, so there is nowhere to put

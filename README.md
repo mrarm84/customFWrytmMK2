@@ -51,6 +51,17 @@ as before (the old polynomial's own error is that large).
     python3 tools/dgbench.py render build/mainos_<tag>.bin build/obj/0021-dg-machines.elf OUT/
     python3 tools/dgbench.py diff   OUT_A/ OUT_B/
 
+**0013, DAC SUM only.** The per-track DAC FILTER, transient shaper and POL are
+out of the audio interrupt and their page is hidden; the filter on the voices is
+0019's DIST filter, on the sum. The sum is rytm2_mods' voice-dac 1.7 (pan split
+cached per voice, two frames per pass over four accumulators, no multiplies with
+no voice on the bus). The unit read 2.44% of a block for DAC SUM with every
+filter off, 4.24% with LP1 on every track, and 100% CPU with one LP2 (rytm2_mods,
+2026-11-08); lite runs none of the filters, and a static count puts the sum at
+about 1,100 instructions a block against about 1,500 for the old path with
+every filter off. Not measurable in the emulator (Unicorn mis-decodes `msac`
+with a load), not yet run on a unit.
+
 Not yet run on a unit. The build is the same as below (`make verify`).
 
 # rytm-mods

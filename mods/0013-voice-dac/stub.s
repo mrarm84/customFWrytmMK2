@@ -1,5 +1,17 @@
         | Mod 0013 - every voice to MAIN through the DAC.
         |
+        | LITE (rytm2_second, branch lite): DAC SUM only. The per-voice DAC
+        | FILTER (1-pole pairs, biquads), the transient shaper and POL are out
+        | of the audio interrupt, and the DAC FILTER page is never shown; the
+        | filter on the sum is 0019's DIST filter. What is left is voice-dac
+        | 1.7's (rytm2_mods): the pan split cached per voice (pan_cache), the
+        | sum two frames at a time over four accumulators, and the PRE words
+        | passed through without the multiplies when no voice is on the bus.
+        | The code below that the interrupt no longer calls (bq_*, shp_*, the
+        | coefficient pass's helpers) and the page's hooks stay in place,
+        | unreached; the hooks also serve 0019's REVERB 2 page (page 14).
+        | Sounds keep their DAC FILTER values; they are only not applied.
+        |
         | All eight voices leave the analog main bus. Each audio interrupt the
         | voice slots of the receive buffer - the voices after their analog
         | filter and amp - are panned and summed here and added to the PRE
@@ -372,11 +384,15 @@ vs_body:
         .endif
         rts                                       | DAC SUM off: no filter, no sum
 1:      lea     -160(%sp),%sp
-        movem.l %d0-%d7/%a0-%a6,(%sp)             | 60 B; (cL, cR) at +60, 68 B; entries at +128
+        movem.l %d0-%d7/%a0-%a6,(%sp)             | 60 B; (cL, cR) at +60, 68 B
         move.l  %macsr,%d0
         move.l  %d0,-(%sp)
         move.l  #0xa0,%macsr
 
+        | (cL, cR) per slot, from the voice's VCA words, its slot and whether
+        | its track is off the main bus; pan_cache keeps each voice's last
+        | inputs and result, so the divide and multiply run only when one of
+        | them changes (lite: voice-dac 1.7's, without POL).
         move.l  MAIN_OFF,%d6
         bge.s   1f
         move.l  MAIN_OFF_G,%d6
@@ -386,24 +402,37 @@ vs_body:
         lea     VCA_L,%a1
         lea     VOICE_OWNER,%a0
         lea     gaintab,%a2
-        lea     hpf_track,%a5
+        lea     pan_cache,%a6
         moveq   #0,%d5                            | physical voice
 2:      move.l  (%a3)+,%d3
         lsl.l   #3,%d3                            | slot * 8, one (cL, cR)
-        move.l  %d3,%d0
-        lsr.l   #1,%d0                            | slot * 4
         mvz.b   (%a0,%d5.l),%d2                   | owning track
-        move.l  (%a5,%d2.l*4),%d1                 | its filter entry
-        move.l  %d1,ENT-COEF(%a4,%d0.l)
-        moveq   #0,%d0
-        moveq   #0,%d1
         move.l  %d6,%d4
         asr.l   %d2,%d4
-        btst    #0,%d4
-        bne.s   3f                                | off the main bus
+        moveq   #1,%d1
+        and.l   %d1,%d4                           | off the main bus
+        lsl.l   #8,%d4
+        or.l    %d3,%d4                           | aux: slot * 8 | off << 8
         mvz.w   (%a1),%d0                         | wL
         mvz.w   VCA_R-VCA_L(%a1),%d1              | wR
-        add.l   %d0,%d1
+        move.l  %d0,%d7
+        swap    %d7
+        or.l    %d1,%d7                           | key: wL << 16 | wR
+        cmp.l   (%a6),%d7
+        bne.s   5f
+        cmp.l   4(%a6),%d4
+        bne.s   5f
+        move.l  8(%a6),%d0                        | unchanged: as last block
+        move.l  12(%a6),%d1
+        bra.s   4f
+5:      move.l  %d7,(%a6)
+        move.l  %d4,4(%a6)
+        btst    #8,%d4
+        beq.s   6f
+        moveq   #0,%d0                            | off the main bus
+        moveq   #0,%d1
+        bra.s   3f
+6:      add.l   %d0,%d1
         beq.s   3f                                | both zero, and so is d0
         moveq   #15,%d2
         lsl.l   %d2,%d0
@@ -416,302 +445,110 @@ vs_body:
         swap    %d1
         clr.w   %d1                               | g, Q31
         sub.l   %d0,%d1                           | cR
-3:      mvz.b   (%a0,%d5.l),%d2                   | owning track
-        move.l  48(%a5,%d2.l*4),%d4               | its shp_track entry
-        btst    #8,%d4
-        beq.s   4f
-        neg.l   %d0                               | POL: the voice inverted
-        neg.l   %d1
+3:      move.l  %d0,8(%a6)
+        move.l  %d1,12(%a6)
 4:      move.l  %d0,(%a4,%d3.l)
         move.l  %d1,4(%a4,%d3.l)
+        lea     16(%a6),%a6
         addq.l  #2,%a1
         addq.l  #1,%d5
         moveq   #8,%d0
         cmp.l   %d0,%d5
-        blt.s   2b
+        blt.w   2b
 
-        .if     P_PROF
-        mvz.b   MUP_INT,%d0
-        btst    #0,%d0                            | profiling: no filter
-        bne.w   9f
-        .endif
-
-        | The coefficients, a slot at a time, from its entry: (b0, b1, p) into
-        | flt_coef. A slot is off when TYP is OFF or DEP is 0 dB: then it is a
-        | high-pass at OFF_POLE at full depth, and a pair whose slots are both
-        | off is skipped below. A 2-pole type (LP2..PK) is off here too, its
-        | biquad's coefficients worked out by bq_coef and run by bq_run after
-        | this pass. Otherwise, with p the pole at FRQ, h = (1 + p) / 2
-        | for HP1 or (1 - p) / 2 for LP1, g the dry share and m = 1 - g,
-        |   b0 = g + m h,   b1 = -(g p + m h) for HP1, m h - g p for LP1.
-        | A slot whose TYP changed while FRQ did not takes the other mode's
-        | state: with one pole LP1 = x - HP1, so its last output becomes
-        | (1 + g) x1 - y1. Each slot keeps the entry its coefficients came from
-        | in flt_key and is worked out again only when that changes; flt_key
-        | starts at -1, which no entry is.
-        lea     ENT(%sp),%a6
-        lea     flt_coef,%a5
-        lea     hpf_state,%a4
-        lea     flt_key,%a3
-        lea     flt_pole,%a2
-        lea     flt_gain,%a1
-        moveq   #7,%d7
-13:     move.l  (%a6)+,%d5                        | TYP << 24 | FRQ << 16 | DEP << 8 | RES
-        cmp.l   (%a3),%d5
-        bne.s   20f
-        lea     12(%a5),%a5                       | unchanged: as last block
-        addq.l  #4,%a3
-        bra.w   16f
-20:     moveq   #7,%d0
-        sub.l   %d7,%d0                           | the slot
-        lea     bq_on,%a0
-        clr.b   (%a0,%d0.l)                       | no biquad unless set again
-        move.l  %d5,%d4
-        clr.w   %d4
-        swap    %d4                               | TYP << 8 | FRQ
-        cmp.l   #(TYP_OFF + 1) << 8,%d4
-        bcs.w   15f                               | TYP OFF
-        move.l  %d5,%d3
-        lsr.l   #8,%d3
-        and.l   #0xff,%d3                         | DEP
-        beq.w   15f                               | 0 dB
-        move.l  %d4,%d2
-        lsr.l   #8,%d2                            | TYP
-        cmp.l   #TYP_LP1,%d2
-        beq.s   21f
-        cmp.l   #TYP_HP1,%d2
-        beq.s   21f
-        jsr     bq_coef                           | 2-pole: the biquad's, and off
-        bra.w   15f                               | for this pass
-21:     move.l  %d4,%d2
-        and.l   #0xff,%d2                         | FRQ
-        move.l  (%a2,%d2.l*4),%d6                 | p
-        mvz.w   (%a1,%d3.l*2),%d1
-        swap    %d1                               | g, Q31
-        move.l  #0x7fffffff,%d0
-        sub.l   %d1,%d0                           | m
-        move.l  %d6,%d2
-        cmp.l   #TYP_HP1 << 8,%d4
-        bcc.s   14f
-        neg.l   %d2
-14:     add.l   #0x80000000,%d2
-        lsr.l   #1,%d2                            | h, (1 + p) / 2 or (1 - p) / 2
-        mac.l   %d0,%d2,%acc2
-        movclr.l %acc2,%d2                        | m h
-        mac.l   %d1,%d6,%acc2
-        movclr.l %acc2,%d0                        | g p
-        move.l  %d1,%d3
-        add.l   %d2,%d3
-        move.l  %d3,(%a5)+                        | b0
-        cmp.l   #TYP_HP1 << 8,%d4
-        bcs.s   17f
-        add.l   %d2,%d0
-        neg.l   %d0                               | b1, HP1
-        bra.s   18f
-17:     sub.l   %d0,%d2
-        move.l  %d2,%d0                           | b1, LP1
-18:     move.l  %d0,(%a5)+
-        move.l  %d6,(%a5)+                        | p
-        move.l  (%a3),%d0                         | the entry last worked out
-        swap    %d0
-        eor.l   %d4,%d0
-        and.l   #0xffff,%d0
-        tst.b   %d0
-        bne.s   19f                               | FRQ moved: the pole differs
-        tst.l   %d0
-        beq.s   19f                               | TYP unchanged
-        move.l  (%a3),%d0
-        swap    %d0
-        lsr.l   #8,%d0
-        and.l   #0xff,%d0                         | its TYP
-        cmp.l   #TYP_LP1,%d0
-        beq.s   22f
-        cmp.l   #TYP_HP1,%d0
-        bne.s   19f                               | not 1-pole, or -1: no state
-22:
-        move.l  (%a3),%d0
-        and.l   #0xff00,%d0
-        beq.s   19f                               | it was at 0 dB, off
-        move.l  (%a4),%d0                         | x1
-        mac.l   %d0,%d1,%acc2
-        movclr.l %acc2,%d2                        | g x1
-        add.l   %d0,%d2
-        sub.l   4(%a4),%d2
-        move.l  %d2,4(%a4)                        | y1 = (1 + g) x1 - y1
-19:     move.l  %d5,(%a3)+
-        bra.s   16f
-15:     move.l  #OFF_B0,(%a5)+
-        move.l  #-OFF_B0,(%a5)+
-        move.l  #OFF_POLE,(%a5)+
-        move.l  %d5,(%a3)+
-16:     addq.l  #8,%a4
-        subq.l  #1,%d7
-        bpl.w   13b
-
-        | The filter, two slots at a time - A in acc2, B in acc3, skipping a
-        | pair whose slots are both off, so the cost follows the filters in use
-        | (about 0.4% of a block a pair): 32 frames in four runs of eight, a
-        | slot's word 48 B apart and B 4 B after A, y written over the x
-        | already read. The last run's loads read the words past the buffer,
-        | unused. The pair's column base and the coefficient pointer are kept
-        | on the stack across the run.
-        .if     P_PROF
-        mvz.b   MUP_INT,%d0
-        btst    #2,%d0                            | profiling: a slot at a time
-        bne.w   filter_single
-        .endif
-        lea     hpf_state,%a0
-        lea     flt_coef,%a6
-        lea     RXBUF+8,%a2
-7:      move.l  (%a6)+,%d7                        | b0, A
-        move.l  (%a6)+,%a1                        | b1, A
-        move.l  (%a6)+,%d6                        | p, A
-        move.l  (%a6)+,%a4                        | b0, B
-        move.l  (%a6)+,%d0                        | b1, B
-        move.l  (%a6)+,%a3                        | p, B
-        lea     -8(%sp),%sp
-        movem.l %a2/%a6,(%sp)
-        move.l  %d0,%a6                           | b1, B
-        cmp.l   #OFF_POLE,%d6
-        bne.s   6f
-        cmpa.l  #OFF_POLE,%a3
-        bne.s   6f
-        | Both off: the pair is skipped and its slots keep the voices as the
-        | ADC gave them. The state follows the signal - x1 and y1 both the
-        | slot's last sample - so turning a filter on starts from there.
-        move.l  (FRAMES-1)*RXSTRIDE(%a2),%d1
-        move.l  %d1,(%a0)+
-        move.l  %d1,(%a0)+
-        move.l  (FRAMES-1)*RXSTRIDE+4(%a2),%d1
-        move.l  %d1,(%a0)+
-        move.l  %d1,(%a0)+
-        bra.w   5f
-6:      move.l  (%a0),%d3                         | x1, A
-        move.l  4(%a0),%d4                        | y1, A
-        move.l  8(%a0),%d2                        | x1, B
-        move.l  12(%a0),%d5                       | y1, B
-        lea     FRAMES*RXSTRIDE(%a2),%a5          | the run's end
-        move.l  (%a2),%d0                         | x, A
-        move.l  4(%a2),%d1                        | x, B
-8:      .irp    i,0,1,2,3,4,5,6,7
-        mac.l   %d0,%d7,%acc2
-        mac.l   %d1,%a4,%acc3
-        mac.l   %d3,%a1,%acc2
-        mac.l   %d2,%a6,%acc3
-        move.l  %d0,%d3                           | x1 = x, A
-        move.l  %d1,%d2                           | x1 = x, B
-        mac.l   %d4,%d6,RXSTRIDE*(\i+1)(%a2),%d0,%acc2
-        mac.l   %d5,%a3,RXSTRIDE*(\i+1)+4(%a2),%d1,%acc3
-        movclr.l %acc2,%d4                        | y, A
-        movclr.l %acc3,%d5                        | y, B
-        move.l  %d4,RXSTRIDE*\i(%a2)
-        move.l  %d5,RXSTRIDE*\i+4(%a2)
-        .endr
-        lea     8*RXSTRIDE(%a2),%a2
-        cmpa.l  %a5,%a2
-        bne.w   8b
-        move.l  %d3,(%a0)+
-        move.l  %d4,(%a0)+
-        move.l  %d2,(%a0)+
-        move.l  %d5,(%a0)+
-5:      movem.l (%sp),%a2/%a6
-        lea     8(%sp),%sp
-        addq.l  #8,%a2
-        cmpa.l  #hpf_state+64,%a0
-        bne.w   7b
-        jsr     bq_run                            | the 2-pole slots
-        tst.l   shp_any
-        beq.s   31f
-        jsr     shp_run                           | the transient shaper
-31:
-        .if     P_PROF
-        bra.w   9f
-
-        | Profiling only: the same filter a slot at a time, for comparing
-        | against the pair above on the in-place buffer.
-filter_single:
-        lea     hpf_state,%a0
-        lea     flt_coef,%a6
-        lea     RXBUF+8,%a5
-        moveq   #7,%d5
-11:     move.l  (%a6)+,%d7                        | b0
-        move.l  (%a6)+,%a1                        | b1
-        move.l  (%a6)+,%d6                        | p
-        move.l  (%a0),%d3                         | x1
-        move.l  4(%a0),%d4                        | y1
-        move.l  %a5,%a2
-        move.l  (%a2),%d0                         | x
-        moveq   #3,%d2
-12:     .irp    i,0,1,2,3,4,5,6,7
-        mac.l   %d0,%d7,%acc2
-        mac.l   %d3,%a1,%acc2
-        move.l  %d0,%d3
-        mac.l   %d4,%d6,RXSTRIDE*(\i+1)(%a2),%d0,%acc2
-        movclr.l %acc2,%d4
-        move.l  %d4,RXSTRIDE*\i(%a2)
-        .endr
-        lea     8*RXSTRIDE(%a2),%a2
-        subq.l  #1,%d2
-        bpl.w   12b
-        move.l  %d3,(%a0)+
-        move.l  %d4,(%a0)+
-        addq.l  #4,%a5
-        subq.l  #1,%d5
-        bpl.w   11b
-        .endif
-9:
-        .if     P_PROF
-        mvz.b   MUP_INT,%d0
-        btst    #1,%d0                        | profiling: no sum
-        bne.w   10f
-        .endif
-
-        | The sum, frame by frame, into the PRE pair itself: each side's
-        | accumulator starts from its PRE word (stored as acc >> 8, logical, so
-        | << 8 is its Q31 value again), the voices are subtracted, and the
-        | saturating movclr clamps the result at full scale. The voices are
-        | subtracted because the PRE pair is inverted against the analog bus,
-        | as the consumer's msac of the returns reflects (measured against
-        | stock over USB, 2026-09-28). Each (cL, cR) loads during the multiply
-        | before it; the last load reads the word past the table, unused.
+        | The sum into the PRE pair itself: each side's accumulator starts
+        | from its PRE word (stored as acc >> 8, logical, so << 8 is its Q31
+        | value again), the voices are subtracted - the PRE pair is inverted
+        | against the analog bus (measured against stock over USB,
+        | 2026-09-28) - and the saturating movclr clamps at full scale.
+        | Two frames at a time (voice-dac 1.7): A in acc0/acc1, B (the next
+        | frame) in acc2/acc3, each slot's (cL, cR) loaded once for both and
+        | each slot's samples and coefficients during the slot before's
+        | multiplies; each accumulator takes the same terms in the same order
+        | as a frame at a time. The last slot's loads read the words past the
+        | slots and the table, unused.
         move.l  OUT_IDX,%d0
         moveq   #11,%d1
         lsl.l   %d1,%d0
         add.l   #OUT_RING+OUT_PRE,%d0
         move.l  %d0,%a1
-        lea     RXBUF+8,%a3
-        lea     COEF(%sp),%a4                     | the filter used a4
+        .if     P_TIMING == 0
+        | No voice on the bus (every (cL, cR) zero): the sum would only take
+        | each PRE word through its accumulator and back, (w << 8) >> 8, the
+        | word with its top byte cleared; that, without the multiplies.
+        lea     COEF(%sp),%a4
+        moveq   #0,%d0
+        moveq   #15,%d1
+1:      or.l    (%a4)+,%d0
+        subq.l  #1,%d1
+        bpl.s   1b
+        tst.l   %d0
+        bne.s   2f
+        move.l  #0x00ffffff,%d2
         moveq   #FRAMES-1,%d5
-4:      move.l  %a4,%a2
+3:      move.l  (%a1),%d0
+        and.l   %d2,%d0
+        move.l  %d0,(%a1)+
         move.l  (%a1),%d0
+        and.l   %d2,%d0
+        move.l  %d0,(%a1)
+        lea     OUT_STRIDE-4(%a1),%a1
+        subq.l  #1,%d5
+        bpl.s   3b
+        bra.w   10f
+2:
+        .endif
+        lea     RXBUF+8,%a3
+        lea     COEF(%sp),%a4
+        lea     FRAMES*RXSTRIDE(%a3),%a5          | the end
+4:      move.l  (%a1),%d0
         lsl.l   #8,%d0
-        move.l  %d0,%acc0                         | PRE L, Q31
+        move.l  %d0,%acc0                         | PRE L, A, Q31
         move.l  4(%a1),%d0
         lsl.l   #8,%d0
-        move.l  %d0,%acc1                         | PRE R, Q31
-        move.l  (%a2)+,%d1                        | cL, slot 0
-        .irp    i,0,1,2,3,4,5,6,7
-        move.l  4*\i(%a3),%d0                     | y
-        msac.l  %d0,%d1,(%a2)+,%d1,%acc0          | L; d1 = cR
-        msac.l  %d0,%d1,(%a2)+,%d1,%acc1          | R; d1 = the next cL
+        move.l  %d0,%acc1                         | PRE R, A
+        move.l  OUT_STRIDE(%a1),%d0
+        lsl.l   #8,%d0
+        move.l  %d0,%acc2                         | PRE L, B
+        move.l  OUT_STRIDE+4(%a1),%d0
+        lsl.l   #8,%d0
+        move.l  %d0,%acc3                         | PRE R, B
+        move.l  (%a3),%d0                         | yA, slot 0
+        move.l  RXSTRIDE(%a3),%d1                 | yB
+        move.l  (%a4),%d2                         | cL
+        move.l  4(%a4),%d3                        | cR
+        .irp    i,0,2,4,6
+        msac.l  %d0,%d2,4*(\i+1)(%a3),%d4,%acc0
+        msac.l  %d1,%d2,RXSTRIDE+4*(\i+1)(%a3),%d5,%acc2
+        msac.l  %d0,%d3,8*(\i+1)(%a4),%d6,%acc1
+        msac.l  %d1,%d3,8*(\i+1)+4(%a4),%d7,%acc3
+        msac.l  %d4,%d6,4*(\i+2)(%a3),%d0,%acc0
+        msac.l  %d5,%d6,RXSTRIDE+4*(\i+2)(%a3),%d1,%acc2
+        msac.l  %d4,%d7,8*(\i+2)(%a4),%d2,%acc1
+        msac.l  %d5,%d7,8*(\i+2)+4(%a4),%d3,%acc3
         .endr
-        movclr.l %acc0,%d2
-        movclr.l %acc1,%d3
+        movclr.l %acc0,%d4
+        movclr.l %acc1,%d5
+        movclr.l %acc2,%d6
+        movclr.l %acc3,%d7
         .if     P_TIMING
-        .irp    side,%d2,%d3
+        .irp    side,%d4,%d5,%d6,%d7
         tpeak   \side
         .endr
         .endif
-        lsr.l   #8,%d2
-        move.l  %d2,(%a1)+
-        lsr.l   #8,%d3
-        move.l  %d3,(%a1)+
-        lea     OUT_STRIDE-8(%a1),%a1
-        lea     RXSTRIDE(%a3),%a3
-        subq.l  #1,%d5
-        bpl.w   4b
+        lsr.l   #8,%d4
+        move.l  %d4,(%a1)
+        lsr.l   #8,%d5
+        move.l  %d5,4(%a1)
+        lsr.l   #8,%d6
+        move.l  %d6,OUT_STRIDE(%a1)
+        lsr.l   #8,%d7
+        move.l  %d7,OUT_STRIDE+4(%a1)
+        lea     2*OUT_STRIDE(%a1),%a1
+        lea     2*RXSTRIDE(%a3),%a3
+        cmpa.l  %a5,%a3
+        bne.w   4b
 10:
-
         move.l  (%sp)+,%d0
         move.l  %d0,%macsr
         movem.l (%sp),%d0-%d7/%a0-%a6
@@ -720,6 +557,15 @@ filter_single:
         jsr     t_end
         .endif
         rts
+
+        | pan_cache: per physical voice, the inputs of its last (cL, cR) -
+        | key wL << 16 | wR, aux slot * 8 | off << 8 - and the result. aux
+        | starts at -1, which no aux is.
+        .align  2
+pan_cache:
+        .rept   8
+        .long   0, -1, 0, 0
+        .endr
 
 
         .if     P_TIMING
@@ -932,9 +778,8 @@ filter_pages:
 hpf_cycle:
         move.l  140(%a2),%d1                      | displaced
         addq.l  #1,%d1                            | displaced
-        tst.l   dac_on
-        bne.s   9f
-        move.l  124(%a2),%a0
+        move.l  124(%a2),%a0                      | lite: on the FILTER view the
+                                                  | index stays 0 whatever DAC SUM
         moveq   #PAGE_FILTER,%d2
         cmp.l   (%a0),%d2
         bne.s   9f
@@ -1222,6 +1067,7 @@ hpf_refresh:
         move.l  8(%fp),%a2                        | displaced
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
+        bra.w   6f                                | lite: no per-track filter values
         moveq   #0,%d2                            | track
 1:      move.l  %d2,%d0
         jsr     shared_sound_of
@@ -1252,7 +1098,7 @@ hpf_refresh:
         and.l   #0xffff0000,%d0
         move.l  %d0,shp_any
         jsr     flt_knobs
-        bsr.w   dac_active                        | DAC SUM: the active record's
+6:      bsr.w   dac_active                        | DAC SUM: the active record's
         bsr.w   dac_find
         tst.l   %d0
         bmi.s   5f
