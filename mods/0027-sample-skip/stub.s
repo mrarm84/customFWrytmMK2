@@ -98,9 +98,13 @@ sk_res:
         dbgbit  0
         jmp     RES_SKIP
 5:      dbgbit  8
+        .if     P_DBG
         bra.s   8f
+        .endif
 6:      dbgbit  16
+        .if     P_DBG
         bra.s   8f
+        .endif
 7:      dbgbit  24
 8:      clr.b   sk_flag
         move.l  V_RATE(%a3),%d5                   | displaced
