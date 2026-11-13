@@ -41,7 +41,7 @@ SECTIONS = [
     "scenes, CV in, vel/AT routes, perf",
     "LFOs + LFO RND (0004)",
     "machines (+ portamento)",
-    "envelopes, pan/mute, master vol",
+    "env, sample layer?, pan, master vol",
     "receive fill + DAC SUM (0013)",
     "stock delay + reverb (+0019 pre)",
     "REVERB 2 / phaser / DIST FILTER",
@@ -144,14 +144,14 @@ def main():
                 raise SystemExit("no tagged frames on channel 10: is the 0023 build flashed?")
             report(d)
             return
-        print("whole% med/max | machines | delay+rev | REV2/DIST | DAC SUM | smooth  (Ctrl+C)")
+        print("whole% med/max | pre    | machine| env/smp| DACSUM | dly+rev| REV2   | USB    (Ctrl+C)")
         while True:
             x, over = st.read(FS)
             d = decode(np.asarray(x))
             if d is None:
                 print("no tagged frames"); continue
             r = pct(d["run"], d["iv"])
-            m = [np.median(pct(d["sec"][:, k], d["iv"])) for k in (4, 7, 8, 6, 1)]
+            m = [np.median(pct(d["sec"][:, k], d["iv"])) for k in (0, 4, 5, 6, 7, 8, 10)]
             print(f"{time.strftime('%H:%M:%S')}  {np.median(r):6.2f} / {r.max():6.2f} | "
                   + " | ".join(f"{v:6.2f}" for v in m)
                   + ("   (overflow)" if over else ""), flush=True)
