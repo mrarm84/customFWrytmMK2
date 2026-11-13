@@ -409,6 +409,34 @@ does. There is nothing to set up, and no page for it.
 - Whether the notes are recorded in live recording or sent out on MIDI follows
   what stock does for Overbridge notes; not checked.
 
+## 0024 - Lean interrupt
+
+More audio-interrupt time for effects and machines. Nothing to set.
+
+- **Parameter smoothing at half rate.** Knob moves still glide over about the
+  same 22 ms, but in steps every 1.33 ms instead of 0.67 ms. Listen for zipper
+  noise on fast filter sweeps; none is expected.
+- **Performance mode does nothing.** PERF still opens and its pads light, but
+  its locks no longer change the sound.
+- **CV modulation does nothing.** The CONTROL INPUT and CONTROL IN MOD pages are
+  still in the menu but have no effect. The CV trig (0020) still works.
+  Velocity and aftertouch modulation still work.
+
+### Measuring it (builds 17 and 18)
+
+17 is this build with the meter, 18 the same without 0024's changes (stock
+smoothing, PERF and CV modulation on) with the meter. Flash one, measure, flash
+the other, measure the same pattern.
+
+1. Rytm: SETTINGS > SYSTEM > USB CONFIG to the mode with 12 inputs
+   (Overbridge). On Windows this needs Elektron's Overbridge driver.
+2. Once: `pip install numpy sounddevice mido python-rtmidi`.
+3. Play a busy pattern, REVERB 2 effects as you use them, then:
+   `python tools/isr_meter.py --seconds 20`
+   or `python tools/isr_meter.py --live` while turning effects on and off.
+4. Compare the "whole interrupt" median and p99 between 17 and 18; S1 is the
+   smoothing part, S2 the performance/CV part.
+
 ## 0021 - DG machines
 
 New digital machines in the slots of the hidden test machines: DG SINE, DG SAW,
