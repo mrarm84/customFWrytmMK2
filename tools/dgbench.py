@@ -26,7 +26,7 @@ BUDGET = CPU_HZ * FRAMES // RATE        # cycles in one block at 266 MHz
 OBJDUMP = "m68k-elf-objdump"
 
 MACHINES = ["dg_sine", "dg_saw", "dg_pulse", "dg_fm2", "dg_organ",
-            "dg_chord", "dg_super", "dg_pluck", "dg_chip"]
+            "dg_chord", "dg_super", "dg_pluck", "dg_chip", "dg_fold"]
 
 
 def k(v):
@@ -54,6 +54,9 @@ SCEN = {
                  "busy":  [100, 64, 127, 64, 100, 90, 70, 60]},
     "dg_pluck": {"plain": [100, 52, 100, 64, 90, 0, 64, 0],
                  "busy":  [100, 52, 100, 64, 70, 40, 90, 60]},
+    "dg_fold":  {"plain": [100, 64, 127, 64, 0, 64, 0, 0],
+                 "mid":   [100, 64, 127, 64, 64, 64, 0, 0],
+                 "busy":  [100, 64, 127, 64, 100, 90, 80, 60]},
     "dg_chip":  {"plain": [100, 64, 127, 64, 2, 0, 0, 64],
                  "busy":  [100, 64, 110, 64, 1, 3, 100, 70]},
 }

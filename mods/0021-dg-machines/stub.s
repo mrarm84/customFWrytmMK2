@@ -138,6 +138,9 @@
         .equ    P_ASPD,         12                | 15
         .equ    P_SWP,          14                | 16
         .equ    SWP_MAX,        60 << 16
+        .equ    P_FLD,          8                 | 13 (FOLD)
+        .equ    P_SYM,          10                | 14
+        .equ    P_FEN,          12                | 15
 
         | every machine starts the same way
         .macro  DG_ENTRY
@@ -1861,6 +1864,7 @@ fix_ids:
         .word   403, 404, 405, 406, 407
         .word   447, 448, 390, 391, 392, 393, 394, 395, 396
         .word   382, 383, 384, 385, 386, 387, 388, 389
+        .word   342, 343, 344, 345, 346, 347, 348, 349     | batch 4: FOLD
         .word   ID_SENTINEL, 0
 
         | ==================================================================
@@ -1949,3 +1953,99 @@ txt_aspd_l:     .asciz  "Arp Speed"
 txt_aspd_s:     .asciz  "SPD"
 txt_swp_l:      .asciz  "Sweep"
 txt_swp_s:      .asciz  "SWP"
+
+        | ==================================================================
+        | cave33 (.text9): batch 4, new machine types. BD CLASSIC 2's routine
+        | (machine 36, hidden), whose dispatch entry is dg_fold's.
+        | ==================================================================
+        .section .text9,"ax"
+        .align  2
+
+        | ------------------------------------------------------------ DG FOLD
+        | A triangle through a sine wavefolder, y = sin(pi/2 * (g * tri +
+        | sym)): g from 1 (FLD 0, a rounded triangle) to about 8x, rising as
+        | FLD squared (7 FLD^2 / 64, Q8), plus FEN
+        | times the fold envelope (ST_SWE, full at the trig, falling at DEC's
+        | rate), up to about 15x; SYM offsets the triangle by up to half its
+        | height either way, for even harmonics. Then SUB and the level.
+dg_fold:
+        DG_ENTRY
+        jsr     dg_enter
+        tst.l   %d0
+        bne.s   0f
+        jmp     dg_exit
+0:
+        move.l  ST_SWE(%a2),%d0                   | the fold envelope
+        move.w  P_DEC(%a3),%d1
+        jsr     dg_decay
+        move.l  %d0,ST_SWE(%a2)
+        moveq   #15,%d1
+        asr.l   %d1,%d0                           | Q15
+        move.w  P_FEN(%a3),%d1
+        ext.l   %d1
+        asr.l   #8,%d1                            | 0..127
+        muls.l  %d1,%d0
+        moveq   #14,%d1
+        muls.l  %d1,%d0
+        moveq   #15,%d1
+        asr.l   %d1,%d0                           | FEN's share, Q8
+        move.w  P_FLD(%a3),%d1                    | FLD, quadratic: gentle at first,
+        ext.l   %d1                               | about 8x at 127
+        asr.l   #8,%d1
+        muls.l  %d1,%d1
+        moveq   #7,%d2
+        muls.l  %d2,%d1
+        asr.l   #6,%d1
+        add.l   %d1,%d0
+        add.l   #256,%d0
+        movea.l %d0,%a6                           | g, Q8: 1.0 .. ~15
+        move.w  P_SYM(%a3),%d0
+        ext.l   %d0
+        asr.l   #8,%d0
+        sub.l   #64,%d0
+        lsl.l   #8,%d0                            | sym, Q15: -0.5 .. +0.5
+        movea.l %d0,%a5
+        jsr     dg_note
+        move.l  %d3,%d0
+        jsr     dg_inc
+        move.l  %d0,%d6                           | increment
+        move.l  ST_PH1(%a2),%d3
+        lea     SIN_TAB,%a1
+        movea.l %a4,%a0
+        move.l  #32768,%d5
+        moveq   #FRAMES,%d7
+1:      move.l  %d3,%d0
+        swap    %d0
+        and.l   #0xffff,%d0                       | t, 0..65535
+        cmp.l   %d5,%d0
+        bcs.s   2f
+        not.l   %d0
+        and.l   #0xffff,%d0                       | 65535 - t
+2:      add.l   %d0,%d0
+        sub.l   %d5,%d0                           | the triangle, Q15
+        move.l  %a6,%d1
+        muls.l  %d1,%d0
+        asr.l   #8,%d0
+        add.l   %a5,%d0                           | x = g * tri + sym
+        asr.l   #5,%d0                            | sin(pi/2 x): 1024 a quarter
+        and.l   #4095,%d0
+        mvs.w   (%a1,%d0.l*2),%d0
+        move.l  %d0,(%a0)+
+        add.l   %d6,%d3
+        subq.l  #1,%d7
+        bne.s   1b
+        move.l  %d3,ST_PH1(%a2)
+        movea.l A_CTRL(%sp),%a5                   | DG_ENTRY's, for the passes
+        movea.l %d6,%a6                           | the increment, for SUB
+        jsr     dg_finish
+        jmp     dg_exit
+
+txt_fold_long:  .asciz  "DG FOLD"
+txt_fold_short: .asciz  "FOLD"
+txt_fld_l:      .asciz  "Fold"
+txt_fld_s:      .asciz  "FLD"
+txt_sym_l:      .asciz  "Symmetry"
+txt_sym_s:      .asciz  "SYM"
+txt_fen_l:      .asciz  "Fold Env"
+txt_fen_s:      .asciz  "FEN"
+        .align  2

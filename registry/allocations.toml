@@ -5312,3 +5312,266 @@ addr   = 0x4011ccda
 size   = 6
 expect = "41eb002c2f08"
 entry  = "sk_fir"
+
+# ---------------------------------------------------------------------- cave33
+
+[[pool]]
+name   = "cave33"
+start  = 0x4010ee08
+end    = 0x4010f34c          # exclusive; 1348 B
+stock  = "code"
+expect_sha256 = "69fec35ba1604ac32b74db44207e26c3f4486db268a8d65ef04844586f2e6fc2"
+status = "static"
+note   = """
+BD CLASSIC 2's (machine 36, hidden) routine, whole: its frame at 0x4010ee08 to its
+tail jump at 0x4010f344 and the pad after it; cave31 (BD FM 2's) starts right after.
+0x4010ee06, the one-instruction routine just before it that 0x4011fdce and
+0x40121344 call, is not part of it.
+
+Static, 2026-11-13: a scan of every 2-aligned long in the image finds one pointer
+into the span, its machine's dispatch-table entry 0x4029040c, and no operand in the
+disassembly reaches into it from outside. 0021's batch 4 points that entry at its
+new machine in the span. Not proven on hardware, as cave25.
+"""
+
+# ------------------------------------------- 0021-dg-machines, batch 4 (cave33)
+
+[[cave]]
+owner   = "0021-dg-machines"
+addr    = 0x4010ee08
+size    = 0x544
+section = ".text9"
+note    = "cave33: batch 4's new machine types (DG FOLD, ...) and their names."
+
+# Machine 36's dispatch entry becomes dg_fold.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x4029040c
+size    = 4
+expect  = "4010ee08"
+from_symbol = "dg_fold"
+
+# Availability of machine 36: no home track, every voice.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401bf1c4
+size    = 2
+expect  = "0000"
+replace = "ffff"
+
+# Machine 36's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401bf0a4
+size    = 4
+expect  = "40237119"
+from_symbol = "txt_fold_long"
+
+# Machine 36's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401bf0a8
+size    = 4
+expect  = "40237120"
+from_symbol = "txt_fold_short"
+
+# SYNTH page knobs of machine 36, DG FOLD: TUN FIN FLD DEC SYM FEN SUB LEV.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x402881dc
+size    = 32
+expect  = "000001560000015a0000015b000001590000015c000001580000015d00000157"
+replace = "00000157000001590000015a000001580000015b0000015c0000015d00000156"
+
+# Record 342: machine 36, sound index 9, LEV: 0..0x7f00, default 0x6400.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3e90
+size    = 40
+expect  = "000000240000000a0000000000007f0000003400000000000011ffff000000810000000000000600"
+replace = "00000024000000090000000000007f000000640000000000ffffffffffffffff0000000000000600"
+
+# Record 342's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3eb8
+size    = 4
+expect  = "4023792d"
+from_symbol = "txt_lev_l"
+
+# Record 342's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ec0
+size    = 4
+expect  = "402373c0"
+from_symbol = "txt_lev_s"
+
+# Record 343: machine 36, sound index 10, TUN: 0..0x7f00, default 0x4000.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ec4
+size    = 40
+expect  = "00000024000000090000000000007f0000006400000000000010ffff000000800000000000000600"
+replace = "000000240000000a0000000000007f000000400000000000ffffffffffffffff0000000000000600"
+
+# Record 343's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3eec
+size    = 4
+expect  = "402377cc"
+from_symbol = "txt_tun_l"
+
+# Record 343's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ef4
+size    = 4
+expect  = "402379a8"
+from_symbol = "txt_tun_s"
+
+# Record 344: machine 36, sound index 11, DEC: 0..0x7f00, default 0x7f00.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ef8
+size    = 40
+expect  = "000000240000000c0000000000007f0000002000000000000013ffff000000830000000000000600"
+replace = "000000240000000b0000000000007f0000007f0000000000ffffffffffffffff0000000000000600"
+
+# Record 344's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f20
+size    = 4
+expect  = "40237467"
+from_symbol = "txt_dec_l"
+
+# Record 344's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f28
+size    = 4
+expect  = "40237471"
+from_symbol = "txt_dec_s"
+
+# Record 345: machine 36, sound index 12, FIN: 0..0x7f00, default 0x4000, centred.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f2c
+size    = 40
+expect  = "000000240000000b0000000000007f0000002000000000000012ffff000000820000000000000600"
+replace = "000000240000000c0000000000007f000000400000000001ffffffffffffffff0000000000000600"
+
+# Record 345's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f54
+size    = 4
+expect  = "4023779e"
+from_symbol = "txt_fin_l"
+
+# Record 345's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f5c
+size    = 4
+expect  = "40242c96"
+from_symbol = "txt_fin_s"
+
+# Record 346: machine 36, sound index 13, FLD: 0..0x7f00, default 0x0.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f60
+size    = 40
+expect  = "000000240000000d0000000000007f0000004000000000000014ffff000000840000000000000600"
+replace = "000000240000000d0000000000007f000000000000000000ffffffffffffffff0000000000000600"
+
+# Record 346's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f88
+size    = 4
+expect  = "4023778c"
+from_symbol = "txt_fld_l"
+
+# Record 346's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f90
+size    = 4
+expect  = "40237646"
+from_symbol = "txt_fld_s"
+
+# Record 347: machine 36, sound index 14, SYM: 0..0x7f00, default 0x4000, centred.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3f94
+size    = 40
+expect  = "000000240000000e0000000000007f0000002a00000000000015ffff000000850000000000000600"
+replace = "000000240000000e0000000000007f000000400000000001ffffffffffffffff0000000000000600"
+
+# Record 347's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3fbc
+size    = 4
+expect  = "4023766b"
+from_symbol = "txt_sym_l"
+
+# Record 347's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3fc4
+size    = 4
+expect  = "40237677"
+from_symbol = "txt_sym_s"
+
+# Record 348: machine 36, sound index 15, FEN: 0..0x7f00, default 0x0.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3fc8
+size    = 40
+expect  = "000000240000000f000000000000020000000100000000000016ffff000000860000000000000600"
+replace = "000000240000000f0000000000007f000000000000000000ffffffffffffffff0000000000000600"
+
+# Record 348's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ff0
+size    = 4
+expect  = "402374d3"
+from_symbol = "txt_fen_l"
+
+# Record 348's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ff8
+size    = 4
+expect  = "402374dc"
+from_symbol = "txt_fen_s"
+
+# Record 349: machine 36, sound index 16, SUB: 0..0x7f00, default 0x0.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c3ffc
+size    = 40
+expect  = "0000002400000010000000000000370000001100000000000017ffff000000870000000000000600"
+replace = "00000024000000100000000000007f000000000000000000ffffffffffffffff0000000000000600"
+
+# Record 349's long name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c4024
+size    = 4
+expect  = "4023767b"
+from_symbol = "txt_sub_l"
+
+# Record 349's short name.
+[[patch]]
+owner   = "0021-dg-machines"
+addr    = 0x401c402c
+size    = 4
+expect  = "40245f2a"
+from_symbol = "txt_sub_s"
+
