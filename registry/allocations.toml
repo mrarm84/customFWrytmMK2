@@ -5256,3 +5256,59 @@ addr   = 0x4011c678
 size   = 6
 expect = "22398000583c"
 entry  = "m_k21"
+
+# ---------------------------------------------------------------------- cave32
+
+[[pool]]
+name   = "cave32"
+start  = 0x4011425c
+end    = 0x40114394          # exclusive; 312 B
+stock  = "code"
+expect_sha256 = "373283eace30ef982b49c5c1c0c09df4a4415a303f0f0b81d7f8a50d0acc8de4"
+status = "static"
+note   = """
+FUNC. GEN.'s (machine 43, hidden) main routine: its frame at 0x4011425c to its rts
+at 0x40114390 and the pad after it. The helpers that follow (0x40114394, 0x401143e2)
+are called from outside (0x40114482, 0x4011eaa2) and are not part of the pool.
+
+Static, 2026-11-13: the only reference into the span from outside it is the
+machine's dispatch-table entry 0x40290428, which 0027 points at DISABLE before using
+it; the helpers do not reach into it. The machine is hidden (availability mask 0),
+so a kit naming it loads as DISABLE. Not proven on hardware, as cave25.
+"""
+
+# ----------------------------------------------------------- 0027-sample-skip
+
+[[cave]]
+owner = "0027-sample-skip"
+addr  = 0x4011425c
+size  = 0x138
+note  = "cave32: the two skip stubs and their flag."
+
+# Machine 43 (FUNC. GEN.) pointed into cave32; hidden, and now at DISABLE.
+[[patch]]
+owner   = "0027-sample-skip"
+addr    = 0x40290428
+size    = 4
+expect  = "4011425c"
+replace = "40113efc"
+
+# The sample layer's resampler set-up: `movel %a3@(12),%d5; movel %d5,%d2`, both
+# re-emitted when the voice is not silent. The beqs at 0x4011cba8 lands on its first
+# byte; nothing branches into the rest.
+[[detour]]
+owner  = "0027-sample-skip"
+addr   = 0x4011cbae
+size   = 6
+expect = "2a2b000c2405"
+entry  = "sk_res"
+
+# The decimating filter's start: `lea %a3@(44),%a0; movel %a0,%sp@-`, both
+# re-emitted when the voice is not skipped. The beqs at 0x4011ccb8 and the bles at
+# 0x4011ccbc land on its first byte.
+[[detour]]
+owner  = "0027-sample-skip"
+addr   = 0x4011ccda
+size   = 6
+expect = "41eb002c2f08"
+entry  = "sk_fir"
