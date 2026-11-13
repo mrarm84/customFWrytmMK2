@@ -3,7 +3,8 @@
         | Fixed, no settings: CTRL IN 1 plays T1 (pad 1, BD), CTRL IN 2 plays T5
         | (pad 5, BT), in any CONTROL INPUT mode. A rising gate plays the
         | track as an Overbridge note does, note 60 (the track's own pitch) at
-        | velocity 127; the gate falling sends the note-off.
+        | velocity 127, once a gate: the note-off follows len_ms later
+        | (mod.toml), whatever the gate's length.
         |
         | Detection, in the audio interrupt just after adc_pedal_update
         | (0x40120e9e, every 32 samples, 0.67 ms): the port's raw converter
@@ -42,15 +43,41 @@
         .equ    VEL,            127
         .equ    SRC,            2                 | as Overbridge
 
+        | One trig a gate (2026-11-13): a rising edge plays the track once;
+        | the note-off follows LEN_BLOCKS later whatever the gate does, so a
+        | long gate no longer holds the note and the falling edge only re-arms.
+        | After a trig the port is not looked at for HOLD_BLOCKS, so a bouncing
+        | edge cannot trig twice.
+        .equ    LEN_BLOCKS,     (P_LEN_MS * 3) / 2   | 0.667 ms a block
+        .equ    HOLD_BLOCKS,    3                 | 2 ms
+
         | Run-time state, cvt_state + :
         .equ    S_GATE,         0                 | + p: gate on
-        .equ    S_ON,           2                 | + p: rising edges, counted
-        .equ    S_OFF,          4                 | + p: falling edges
+        .equ    S_ON,           2                 | + p: trigs, counted
+        .equ    S_OFF,          4                 | + p: note-offs due, counted
         .equ    S_ON_DONE,      6                 | + p: the task's copies
         .equ    S_OFF_DONE,     8
         .equ    S_PLAYING,      10                | + p: track playing, -1 none
+        .equ    S_HOLD,         12                | + p: blocks left not looking
+        .equ    S_LEN,          14                | + 2p: blocks to the note-off
+
+        .if     LEN_BLOCKS < 1
+        .error  "0020-cv-trig: len_ms must be 1 or more"
+        .endif
+        .if     LEN_BLOCKS > 65535
+        .error  "0020-cv-trig: len_ms too long"
+        .endif
 
         .text
+
+        | cvt_count(d1 = the counter's offset + port, a2 = state): one more,
+        | and an edge to signal. Uses d0.
+        .macro  cvt_count
+        mvz.b   (%a2,%d1.l),%d0
+        addq.l  #1,%d0
+        move.b  %d0,(%a2,%d1.l)
+        moveq   #1,%d6
+        .endm
 
         | ------------------------------------------------------------------
         | cvt_isr: over `lea 0x800067de,%a4`, after adc_pedal_update has
@@ -64,7 +91,20 @@ cvt_isr:
         lea     cvt_state,%a2
         moveq   #0,%d6                            | an edge to signal
         moveq   #0,%d2                            | port
-1:      pea     ON_MV                             | the thresholds, raw
+1:      mvz.w   S_LEN(%a2,%d2.l*2),%d0            | the note-off countdown
+        beq.s   2f
+        subq.l  #1,%d0
+        move.w  %d0,S_LEN(%a2,%d2.l*2)
+        bne.s   2f
+        moveq   #S_OFF,%d1
+        add.l   %d2,%d1
+        cvt_count
+2:      mvz.b   S_HOLD(%a2,%d2.l),%d0             | just trigged: not looking
+        beq.s   3f
+        subq.l  #1,%d0
+        move.b  %d0,S_HOLD(%a2,%d2.l)
+        bra.s   8f
+3:      pea     ON_MV                             | the thresholds, raw
         move.l  %d2,-(%sp)
         jsr     MV_RAW
         addq.l  #8,%sp
@@ -77,26 +117,25 @@ cvt_isr:
         move.l  %d0,%d4
         asr.l   #3,%d4
         lea     ADRSLT,%a0
-        mvz.w   (%a0,%d2.l*2),%d0
-        lsr.l   #3,%d0                            | as adc_pedal_update scales it
+        mvs.w   (%a0,%d2.l*2),%d0                 | signed, as adc_pedal_update
+        asr.l   #3,%d0                            | reads it, and scaled as it is
         tst.b   S_GATE(%a2,%d2.l)
-        bne.s   3f
+        bne.s   4f
         cmp.l   %d3,%d0                           | off: on above ON_MV
         ble.s   8f
         moveq   #1,%d0
         move.b  %d0,S_GATE(%a2,%d2.l)
-        addq.l  #S_ON,%d2
-        bra.s   5f
-3:      cmp.l   %d4,%d0                           | on: off below OFF_MV
+        moveq   #HOLD_BLOCKS,%d0
+        move.b  %d0,S_HOLD(%a2,%d2.l)
+        move.l  #LEN_BLOCKS,%d0
+        move.w  %d0,S_LEN(%a2,%d2.l*2)
+        moveq   #S_ON,%d1
+        add.l   %d2,%d1
+        cvt_count
+        bra.s   8f
+4:      cmp.l   %d4,%d0                           | on: re-armed below OFF_MV
         bge.s   8f
-7:      clr.b   S_GATE(%a2,%d2.l)
-        addq.l  #S_OFF,%d2
-5:      mvz.b   (%a2,%d2.l),%d0                   | count the edge
-        addq.l  #1,%d0
-        move.b  %d0,(%a2,%d2.l)
-        moveq   #1,%d6
-        moveq   #1,%d0
-        and.l   %d0,%d2                           | back to the port
+        clr.b   S_GATE(%a2,%d2.l)
 8:      addq.l  #1,%d2
         moveq   #PORTS,%d0
         cmp.l   %d0,%d2
@@ -117,9 +156,8 @@ cvt_isr:
         | ------------------------------------------------------------------
         | cvt_task: the MIDI task's loop top, over `pea 0x418fd874` (its wait's
         | argument), re-emitted. d0, d1, a0 and a1 are dead here; d2 is set
-        | right after. Each port's new rising edge is a note_on of its TRIG
-        | DEST, each new falling edge a note_off of the track the last
-        | note_on played. A pulse shorter than the task's turn plays both.
+        | right after. Each port's due note-off releases the track its last
+        | trig played; each new trig is a note_on of its track.
         | ------------------------------------------------------------------
         .align  2
 cvt_task:
@@ -127,15 +165,21 @@ cvt_task:
         movem.l %d2-%d3/%a2,(%sp)
         lea     cvt_state,%a2
         moveq   #0,%d2                            | port
-1:      mvz.b   S_ON(%a2,%d2.l),%d0
+1:      mvz.b   S_OFF(%a2,%d2.l),%d0              | a due note-off first, so a
+        mvz.b   S_OFF_DONE(%a2,%d2.l),%d1         | trig pending with it is not
+        cmp.l   %d1,%d0                           | cut by it
+        beq.s   3f
+        move.b  %d0,S_OFF_DONE(%a2,%d2.l)
+        bsr.w   cvt_release
+3:      mvz.b   S_ON(%a2,%d2.l),%d0
         mvz.b   S_ON_DONE(%a2,%d2.l),%d1
         cmp.l   %d1,%d0
-        beq.s   3f
+        beq.s   4f
         move.b  %d0,S_ON_DONE(%a2,%d2.l)
         move.l  %d2,%d0
         bsr.w   cvt_dest
         subq.l  #1,%d0                            | the track
-        bmi.s   3f
+        bmi.s   4f
         move.l  %d0,%d3
         bsr.w   cvt_release                       | one note per port
         move.b  %d3,S_PLAYING(%a2,%d2.l)
@@ -148,12 +192,6 @@ cvt_task:
         move.l  %d3,-(%sp)
         jsr     NOTE_ON
         lea     28(%sp),%sp
-3:      mvz.b   S_OFF(%a2,%d2.l),%d0
-        mvz.b   S_OFF_DONE(%a2,%d2.l),%d1
-        cmp.l   %d1,%d0
-        beq.s   4f
-        move.b  %d0,S_OFF_DONE(%a2,%d2.l)
-        bsr.w   cvt_release
 4:      addq.l  #1,%d2
         moveq   #PORTS,%d0
         cmp.l   %d0,%d2
@@ -201,3 +239,5 @@ cvt_state:
         .byte   0, 0                              | S_ON_DONE
         .byte   0, 0                              | S_OFF_DONE
         .byte   -1, -1                            | S_PLAYING
+        .byte   0, 0                              | S_HOLD
+        .word   0, 0                              | S_LEN
