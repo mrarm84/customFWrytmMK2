@@ -21,7 +21,9 @@ note-off follows len_ms later whatever the gate's length; falling below 0.5 V
 only re-arms the port, and for 2 ms after a trig the port is not read, so a
 bouncing edge cannot trig twice. (Until 2026-11-13 the gate's length was the
 note's: a long gate, or a sound holding until note-off, played on.) The input
-is read signed, as adc_pedal_update reads it. The thresholds are turned into each port's raw
+is read signed, as adc_pedal_update reads it. At power-up each port must fall
+below 0.5 V before its first trig and is not read for 170 ms (on the unit T1
+played once at every start-up before, 2026-11-13). The thresholds are turned into each port's raw
 units by stock's millivolt conversion (0x4013f3fa), as its CV levels are.
 Stock's CONTROL IN MOD routes keep working on the same port. (The TRIG DEST menu
 item is removed.)

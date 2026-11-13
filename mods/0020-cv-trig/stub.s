@@ -233,11 +233,15 @@ cvt_dest:
         | ------------------------------------------------------------------
         .align  2
 cvt_state:
-        .byte   0, 0                              | S_GATE
+        | Power-up: each port starts as if a gate were high, so it must fall
+        | below OFF_MV before its first trig, and is not read at all for its
+        | first 255 blocks (170 ms) while the converter settles; before,
+        | CTRL IN 1 crossed ON_MV once at start-up and T1 played (2026-11-13).
+        .byte   1, 1                              | S_GATE
         .byte   0, 0                              | S_ON
         .byte   0, 0                              | S_OFF
         .byte   0, 0                              | S_ON_DONE
         .byte   0, 0                              | S_OFF_DONE
         .byte   -1, -1                            | S_PLAYING
-        .byte   0, 0                              | S_HOLD
+        .byte   255, 255                          | S_HOLD
         .word   0, 0                              | S_LEN
