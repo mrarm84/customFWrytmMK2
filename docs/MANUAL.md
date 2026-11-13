@@ -19,6 +19,7 @@ The default image is
 | 0015 | SOUND SETTINGS > ENV RESET | AMP and AMP+FILT: the amp envelope restarts on every trig |
 | 0019 | FX track: REVERB page encoder G (turn, press), REVERB 2 page; DISTORTION page D/E/F; AUDIO ROUTING > DIST FILTER | phaser on the reverb or delay input; octaver, crusher, hiss, chorus, comb and ring mod on REVERB 2, each movable to the delay; a filter feeding the distortion |
 | 0020 | none | a gate into CTRL IN 1 plays T1, into CTRL IN 2 plays T2, once a gate |
+| 0025 | none | PERF pads push their track: filter closes, res/delay/reverb up, a random slow LFO |
 | 0022 | none | the delay's longest time is 5.33 s (was 8 s), freeing 2 MB of RAM for new effects and machines |
 | 0021 | SYNTH page, machine DG SINE, DG SAW, DG PULSE, DG FM2 or DG ORGAN | new digital machines, chromatically tuned, on every track |
 
@@ -436,6 +437,28 @@ the other, measure the same pattern.
    or `python tools/isr_meter.py --live` while turning effects on and off.
 4. Compare the "whole interrupt" median and p99 between 17 and 18; S1 is the
    smoothing part, S2 the performance/CV part.
+
+## 0025 - PERF push
+
+PERF mode is a new instrument: each pad pushes its track's sound one step
+further. Performance locks are gone (0024), so PERF does nothing else.
+
+- **All twelve pads are lit orange** in PERF.
+- **Pad 1..12 = track 1..12.** Each plain press (no FUNC) on a pad edits that
+  track's sound, the same recipe every time, so presses stack:
+  - FILTER **FRQ down 5%** and **RES up 5%**;
+  - AMP **DEL send up 5%** and **REV send up 5%**;
+  - a **random slow LFO**: SPD 1..16, MUL one of the six slowest, any WAV, MOD
+    FRE or TRG, SPH 0..31, FAD 0..16, DEP +1..32, and a DST picked from the
+    machine's 8 parameters, sample FIN/STA, filter FRQ/RES, amp DEC/PAN and the
+    DEL/REV sends.
+- The edits are real: they show on the FILTER, AMP and LFO pages and are saved
+  with the kit like knob turns. **RELOAD the kit** (or recall it) to get the
+  sound back, then push again.
+- Each knob stops at its end: after enough presses the filter is fully closed
+  and the sends are at maximum.
+- FUNC + pad still opens the stock PERF edit page (which no longer affects the
+  sound).
 
 ## 0021 - DG machines
 

@@ -1,0 +1,43 @@
+[mod]
+id      = "0025-perf-push"
+title   = "PERF pads push their track: filter closes, resonance, delay and reverb up, a random slow LFO"
+
+enabled = true
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+A new PERF mode (performance locks are gone with 0024's cut). In PERF, a plain
+pad press (no FUNC) edits the sound of the pad's track, pad 1 = T1 .. pad 12 =
+T12, with the same fixed recipe each press, so presses stack:
+
+- FILTER FRQ down 5% (6.4 knob steps), FILTER RES up 5%;
+- AMP DEL and REV sends up 5%;
+- LFO at random, every knob in the first quarter of its range, near 0: SPD
+  1..16, MUL one of the six slowest, WAV any of the seven, MOD FRE or TRG, SPH
+  0..31, FAD 0..16, DEP +1..32, DST one of 0004's sixteen destinations (the 8
+  machine parameters, sample FIN/STA, filter FRQ/RES, amp DEC/PAN, DEL/REV).
+
+The edits go through the sound set's own delta handler (param_set_apply_delta,
+as a knob turn) and param_set_value for DST, so they show on the pages, mark
+the kit edited and are saved with it; recalling the kit (RELOAD) undoes them.
+FUNC + pad still opens stock's PERF edit view. All twelve pads are lit orange
+in PERF ({15, 5, 0} on the 0..15 scale stock's palette uses).
+
+Hooks: PerformanceView's key handler entry (0x400ce112, a detour) and its
+vtable slot 5, the LED pass (0x401e2428, a patched pointer).
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+symbols = [
+  "project_singleton",
+  "kit_param_set",
+  "param_set_apply_delta",
+  "param_set_value",
+  "led_manager",
+]

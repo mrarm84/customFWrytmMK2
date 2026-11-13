@@ -4999,10 +4999,10 @@ note  = "The audio interrupt meter: entry, exit, eleven marks, the USB emitter a
 
 [[cave]]
 owner   = "0023-isr-meter"
-addr    = 0x401ba290
-size    = 0x200
+addr    = 0x4002891c
+size    = 0xf8
 section = ".mdata"
-note    = "All of cave6: the meter's 21 marks, 32 words, interval and block counter, written at run time. 0024 uses cave6 when its half is on; the two cannot be in one image then, which layout.py reports."
+note    = "All of cave5's free run: the meter's 21 marks, 32 words, interval and block counter, written at run time (220 B). 0024 uses this run when its half is on; the two cannot be in one image then, which layout.py reports."
 
 [[cave]]
 owner   = "0023-isr-meter"
@@ -5187,3 +5187,38 @@ addr   = 0x40121338
 size   = 6
 expect = "4eb94010ede2"
 entry  = "m_k13"
+
+# ---------------------------------------------------------- 0025-perf-push
+
+[[cave]]
+owner = "0025-perf-push"
+addr  = 0x401ba290
+size  = 0x200
+note  = "cave6: the PERF pad handler, the orange LED pass and the recipe. 0024 uses cave6 when its half is on."
+
+[[cave]]
+owner   = "0025-perf-push"
+addr    = 0x401b71f8
+size    = 0x7c
+section = ".pdata"
+note    = "In cave22, after 0024's code: the LFO recipe table, 0004's sixteen destinations and the draw's seed (written at run time)."
+
+# PerformanceView's key handler (vtable 0x401e2414 slot 2): `linkw %fp,#-28` and
+# the first half of `moveml %d2-%d4/%a2-%a3,%sp@`, both re-emitted; the stub rejoins
+# past the moveml. Entered only through the vtable.
+[[detour]]
+owner  = "0025-perf-push"
+addr   = 0x400ce112
+size   = 6
+expect = "4e56ffe448d7"
+entry  = "perf_keys"
+rejoin = 0x400ce11a
+
+# PerformanceView's vtable slot 5, the LED pass (0x400ce23e): perf_leds lights the
+# pads and calls it.
+[[patch]]
+owner       = "0025-perf-push"
+addr        = 0x401e2428
+size        = 4
+expect      = "400ce23e"
+from_symbol = "perf_leds"
