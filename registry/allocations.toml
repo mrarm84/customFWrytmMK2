@@ -1469,6 +1469,24 @@ note    = "cave12, from its first long boundary: the DAC FILTER page's knob, gly
 
 # The audio interrupt's store of the main-disable mask, `moveb %d1,0x80006466`,
 # exactly six bytes. The stub stores all bits set; d1 is reloaded at 0x401212bc.
+# lite: portamento. The audio interrupt's machine call: its `pea 0x800063c0`,
+# re-emitted after the pitch already pushed (4(%sp), and d1) is glided,
+# rejoining at 0x401211d4 (`movel %d2,%sp@-; jsr %a1@`). Nothing branches into
+# 0x401211ce..0x401211d3.
+[[detour]]
+owner  = "0013-voice-dac"
+addr   = 0x401211ce
+size   = 6
+expect = "4879800063c0"
+entry  = "porta"
+
+[[cave]]
+owner   = "0013-voice-dac"
+addr    = 0x400d3b0c
+size    = 0x1f0
+section = ".porta"
+note    = "lite: porta, its per-voice pitch and the glide table."
+
 [[detour]]
 owner  = "0013-voice-dac"
 addr   = 0x401212b6

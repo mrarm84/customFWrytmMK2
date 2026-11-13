@@ -11,6 +11,8 @@
         | coefficient pass's helpers) and the page's hooks stay in place,
         | unreached; the hooks also serve 0019's REVERB 2 page (page 14).
         | Sounds keep their DAC FILTER values; they are only not applied.
+        | Two of the fields carry the portamento instead (see porta): POL is
+        | GLD and RES is TIM, on LFO RND's page.
         |
         | All eight voices leave the analog main bus. Each audio interrupt the
         | voice slots of the receive buffer - the voices after their analog
@@ -1067,7 +1069,6 @@ hpf_refresh:
         move.l  8(%fp),%a2                        | displaced
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
-        bra.w   6f                                | lite: no per-track filter values
         moveq   #0,%d2                            | track
 1:      move.l  %d2,%d0
         jsr     shared_sound_of
@@ -1322,9 +1323,9 @@ txt_dep_long:
 txt_dep_short:
         .asciz  "DEP"
 txt_res_long:
-        .asciz  "Resonance"
+        .asciz  "Porta Time"                      | lite: RES's field is TIM
 txt_res_short:
-        .asciz  "RES"
+        .asciz  "TIM"
 txt_atk_long:
         .asciz  "Transient Attack"
 txt_atk_short:
@@ -1334,9 +1335,9 @@ txt_sus_long:
 txt_sus_short:
         .asciz  "SUS"
 txt_pol_long:
-        .asciz  "Polarity"
+        .asciz  "Glide"                           | lite: POL's field is GLD
 txt_pol_short:
-        .asciz  "POL"
+        .asciz  "GLD"
 txt_full:
         .asciz  "FULL"
 txt_db:
@@ -3108,12 +3109,12 @@ shp_text:
         bsr.w   shp_value
 2:      cmp.l   #ID_POL,%d1
         bne.s   3f
-        moveq   #'+',%d1
+        lea     txt_off,%a0                       | lite: GLD, OFF or ON
         tst.l   %d0
         beq.s   4f
-        moveq   #'-',%d1
-4:      move.b  %d1,(%a1)+
-        clr.b   (%a1)
+        lea     txt_on,%a0
+4:      move.b  (%a0)+,(%a1)+
+        bne.s   4b
         rts
 3:      tst.l   %d0
         beq.s   6f
@@ -3396,3 +3397,83 @@ flt_gain:
         .word   1642, 1596, 1550, 1506, 1464, 1422, 1382, 1343
         .word   1305, 1268, 1232, 1197, 1163, 1130, 1098, 1066
         .word   1036, 1007, 978, 950, 924, 897, 872, 0
+
+        | ------------------------------------------------------------------
+        | PORTAMENTO (lite), on LFO RND's page (0004): GLD (knob C, the old POL
+        | field: +0x6d bit 3) switches it, OFF by default, and TIM (knob D, the
+        | old RES byte, velocity route 0's spare) sets the time. Both are this
+        | mod's per-sound fields, kept with the sound as before; hpf_refresh
+        | copies them per track into hpf_track (TIM, low byte) and shp_track
+        | (GLD, bit 8) each idle tick.
+        |
+        | porta: the audio interrupt's machine call, over its `pea 0x800063c0`
+        | (0x401211ce), re-emitted, rejoining at 0x401211d4. The pitch and the
+        | params are pushed already: d1 and 4(%sp) are the pitch the machine is
+        | called with (60 << 16, or the track's note when keytracked), and the
+        | glided pitch goes back in that slot. d0 is the owner track, d2 the
+        | physical voice, a1 the machine. Each block the voice's pitch moves
+        | toward the note by k of the way, k = 1 - exp(-T / tau), T one block,
+        | tau = 1 ms * 2^(TIM / 12): 1 ms at 0, 40 ms at 64, 1.5 s at 127. In
+        | semitones, so the glide is exponential in frequency, as an analog
+        | portamento. A step under 1/256 semitone lands on the note. With GLD
+        | OFF, and at the voice's first note after boot, the pitch is the
+        | note's. Every machine takes it, the analog ones and 0021's; sample
+        | playback's pitch is its own and does not glide. Keeps all but d0, d1
+        | and a0, as at the call.
+        | ------------------------------------------------------------------
+        .section .porta,"ax"
+        .align  2
+porta:
+        lea     -12(%sp),%sp
+        movem.l %d3-%d5,(%sp)
+        lea     hpf_track,%a0
+        move.l  48(%a0,%d0.l*4),%d3               | shp_track: GLD in bit 8
+        move.l  (%a0,%d0.l*4),%d4
+        and.l   #0x7f,%d4                         | TIM
+        lea     porta_k,%a0
+        mvz.w   (%a0,%d4.l*2),%d4                 | k, Q16
+        lea     porta_cur,%a0
+        move.l  (%a0,%d2.l*4),%d5                 | the voice's pitch last block
+        btst    #8,%d3
+        beq.s   2f                                | OFF: the note's
+        cmp.l   #0x80000000,%d5
+        beq.s   2f                                | none yet: the note's
+        move.l  %d1,%d3
+        sub.l   %d5,%d3                           | the way left
+        asr.l   #8,%d3
+        muls.l  %d4,%d3
+        asr.l   #8,%d3                            | this block's step
+        beq.s   2f                                | under a step: there
+        add.l   %d3,%d5
+        move.l  %d5,%d1
+2:      move.l  %d1,(%a0,%d2.l*4)
+        movem.l (%sp),%d3-%d5
+        lea     12(%sp),%sp
+        move.l  %d1,4(%sp)                        | the pitch argument, glided
+        pea     0x800063c0                        | displaced
+        jmp     0x401211d4
+
+        .align  2
+porta_cur:                                        | per voice, 16.16 semitones
+        .rept   8
+        .long   0x80000000
+        .endr
+        | k = 1 - exp(-(32 / 48000 s) / (1 ms * 2^(TIM / 12))), Q16
+porta_k:
+        .word   31889, 30606, 29350, 28124, 26928, 25764, 24633, 23537
+        .word   22475, 21448, 20456, 19499, 18577, 17691, 16838, 16020
+        .word   15235, 14482, 13762, 13072, 12413, 11783, 11182, 10608
+        .word   10061, 9540, 9043, 8570, 8120, 7693, 7286, 6899
+        .word   6532, 6183, 5852, 5538, 5240, 4957, 4689, 4435
+        .word   4194, 3966, 3750, 3545, 3352, 3168, 2994, 2830
+        .word   2675, 2527, 2388, 2256, 2132, 2014, 1903, 1797
+        .word   1698, 1604, 1515, 1431, 1351, 1276, 1205, 1138
+        .word   1075, 1015, 958, 905, 854, 807, 762, 719
+        .word   679, 641, 605, 572, 540, 509, 481, 454
+        .word   429, 405, 382, 361, 340, 321, 303, 286
+        .word   270, 255, 241, 227, 215, 203, 191, 181
+        .word   170, 161, 152, 143, 135, 128, 121, 114
+        .word   107, 101, 96, 90, 85, 80, 76, 72
+        .word   68, 64, 60, 57, 54, 51, 48, 45
+        .word   43, 40, 38, 36, 34, 32, 30, 28
+        .text

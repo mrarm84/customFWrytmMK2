@@ -62,6 +62,14 @@ about 1,100 instructions a block against about 1,500 for the old path with
 every filter off. Not measurable in the emulator (Unicorn mis-decodes `msac`
 with a load), not yet run on a unit.
 
+**Portamento.** GLD (OFF/ON, default OFF) and TIM on LFO RND's page (0004,
+knobs C and D), per sound. A detour at the audio interrupt's machine call
+(0x401211ce) glides each voice's pitch argument toward the played note,
+exponentially in semitones, tau = 1 ms * 2^(TIM / 12); every machine takes its
+pitch from that argument, so analog and DG machines alike glide. Stored in 0013's
+POL and RES fields, which lite no longer uses. The stub was run in the emulator
+against the built image (pitch per block, registers kept); not yet on a unit.
+
 Not yet run on a unit. The build is the same as below (`make verify`).
 
 # rytm-mods

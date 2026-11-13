@@ -711,7 +711,7 @@ lfo_pages:                                        | the voice LFO view's pages
 
 page_rnd:                                         | {name, top row, bottom row}
         .long   str_page
-        .long   1, 3, 0, 0
+        .long   1, 3, 457, 13                     | lite: C GLD, D TIM (0013's)
         .long   2, 4, 0, 0
 
         | Destination list: the 8 machine parameters, then sample FIN and STA,

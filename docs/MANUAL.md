@@ -87,6 +87,22 @@ The four settings belong to the sound. They are saved with the kit and survive a
 power cycle, and they travel with the sound through copy/paste and the sound
 pool. Sounds made before the mod read the first destination at depth 0.
 
+**Portamento (lite build).** Knobs C and D of the LFO RND page:
+
+| knob | label | setting |
+|---|---|---|
+| C | GLD | OFF (default) or ON: portamento for this sound |
+| D | TIM | portamento time, 0..127: about 1 ms at 0, 40 ms at 64, 0.25 s at 96, 1.5 s at 127 (time to cover most of the interval; the last fraction of a cent takes longer) |
+
+With GLD ON every note glides from the pitch the voice was last playing, on
+every machine, analog and DG alike. The glide follows the note the trig plays
+(keyboard / chromatic notes and note locks); TUN p-locks do not glide (use stock
+PARAMETER SLIDE for those), and sample playback's pitch does not glide. The
+first note after power-on starts on its pitch. Both settings belong to the sound
+and are saved with it; hold TRK while turning to set every track. They use the
+storage of the removed DAC FILTER's POL and RES, so a sound that had POL - or a
+RES set in an older build opens with GLD ON or that TIM: set them once.
+
 **Limitations**
 
 - Voice tracks only; the FX track has no LFO RND.
