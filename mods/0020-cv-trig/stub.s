@@ -1,7 +1,7 @@
         | Mod 0020 - CTRL IN triggers a track.
         |
-        | Fixed, no settings: CTRL IN 1 plays T1 (pad 1, BD), CTRL IN 2 plays T5
-        | (pad 5, BT), in any CONTROL INPUT mode. A rising gate plays the
+        | Fixed: CTRL IN 1 plays T1 (pad 1, BD), CTRL IN 2 plays T2 (pad 2,
+        | SD), in any CONTROL INPUT mode but OFF, which leaves the port alone. A rising gate plays the
         | track as an Overbridge note does, note 60 (the track's own pitch) at
         | velocity 127, once a gate: the note-off follows len_ms later
         | (mod.toml), whatever the gate's length.
@@ -33,6 +33,8 @@
         .equ    ON_MV,          1000              | the gate: on above 1.0 V
         .equ    OFF_MV,         500               | off below 0.5 V
         .equ    PORTS,          2
+        .equ    PORT_MODE,      0x8000fd00        | + 40p: the port's mode, 0 OFF
+        .equ    PORT_REC,       40
 
         .equ    MIDI_SEM,       0x418fd874        | the MIDI task's semaphore
         .equ    SEM_SIGNAL,     0x40000d0a        | (sem), interrupts masked
@@ -90,6 +92,18 @@ cvt_isr:
         movem.l %d2-%d6/%a2,(%sp)
         lea     cvt_state,%a2
         moveq   #0,%d6                            | an edge to signal
+        pea     ON_MV                             | the thresholds, raw, by CTRL
+        clr.l   -(%sp)                            | IN 1's conversion for both
+        jsr     MV_RAW                            | ports: the jacks are alike,
+        addq.l  #8,%sp                            | and CTRL IN 2's own never let
+        move.l  %d0,%d3                           | a gate trig it on the unit
+        asr.l   #3,%d3                            | (2026-11-13)
+        pea     OFF_MV
+        clr.l   -(%sp)
+        jsr     MV_RAW
+        addq.l  #8,%sp
+        move.l  %d0,%d4
+        asr.l   #3,%d4
         moveq   #0,%d2                            | port
 1:      mvz.w   S_LEN(%a2,%d2.l*2),%d0            | the note-off countdown
         beq.s   2f
@@ -104,19 +118,14 @@ cvt_isr:
         subq.l  #1,%d0
         move.b  %d0,S_HOLD(%a2,%d2.l)
         bra.s   8f
-3:      pea     ON_MV                             | the thresholds, raw
-        move.l  %d2,-(%sp)
-        jsr     MV_RAW
-        addq.l  #8,%sp
-        move.l  %d0,%d3
-        asr.l   #3,%d3
-        pea     OFF_MV
-        move.l  %d2,-(%sp)
-        jsr     MV_RAW
-        addq.l  #8,%sp
-        move.l  %d0,%d4
-        asr.l   #3,%d4
-        lea     ADRSLT,%a0
+3:      move.l  %d2,%d0                           | a port in mode OFF is not read:
+        mulu.w  #PORT_REC,%d0                     | an empty jack's input floats
+        lea     PORT_MODE,%a0                     | and ghosts the other jack's
+        tst.l   (%a0,%d0.l)                       | signal, as the converter
+        bne.s   31f                               | takes AN1 and AN2 in turn
+        clr.b   S_GATE(%a2,%d2.l)
+        bra.s   8f
+31:     lea     ADRSLT,%a0
         mvs.w   (%a0,%d2.l*2),%d0                 | signed, as adc_pedal_update
         asr.l   #3,%d0                            | reads it, and scaled as it is
         tst.b   S_GATE(%a2,%d2.l)
@@ -217,14 +226,14 @@ cvt_release:
 9:      rts
 
         | cvt_dest(d0 = port) -> d0 = the track, 1-based: 1 (T1) for CTRL IN
-        | 1, 5 (T5) for CTRL IN 2.
+        | 1, 2 (T2) for CTRL IN 2.
         .align  2
 cvt_dest:
         tst.l   %d0
         bne.s   1f
         moveq   #1,%d0
         rts
-1:      moveq   #5,%d0
+1:      moveq   #2,%d0
         rts
 
         | ------------------------------------------------------------------
