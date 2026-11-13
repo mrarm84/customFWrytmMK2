@@ -4990,14 +4990,21 @@ replace = "6000009e"
 gate    = "cut"
 # ------------------------------------------------------------ 0023-isr-meter
 
-# In cave2, after 0004's claims: the meter's six routines and its state.
+# In cave2, after 0004's claims: the meter's code; its state is in .mdata.
 [[cave]]
 owner = "0023-isr-meter"
 addr  = 0x402cdddc
-size  = 0x1a0
-note  = "The audio interrupt meter: entry, exit, two section marks, the USB emitter, and ten state words written at run time."
+size  = 0x224
+note  = "The audio interrupt meter: entry, exit, eleven marks, the USB emitter and the word packer."
 
-# The audio interrupt's entry: `linkw %fp,#-180` and the first half of
+[[cave]]
+owner   = "0023-isr-meter"
+addr    = 0x401b71f8
+size    = 0x7c
+section = ".mdata"
+note    = "In cave22, after 0024's code: the meter's thirteen marks, sixteen words, interval and block counter, written at run time."
+
+# Mark 0, the audio interrupt's entry: `linkw %fp,#-180` and the first half of
 # `moveml %d0-%a5,%sp@`, both re-emitted. Nothing branches into 0x4011fafc..0x4011fb01;
 # the routine is entered through its vector.
 [[detour]]
@@ -5008,34 +5015,83 @@ expect = "4e56ff4c48d7"
 entry  = "m_in"
 rejoin = 0x4011fb02
 
-# S1's start: `jsr 0x4010e3b4`, re-emitted, just before the smoothing loop's set-up
-# (0x40120c8e, 0024's detour). The timer is read after the call returns.
+# Mark 1: `jsr 0x4010e3b4`, re-emitted, marked after it, just before the smoothing.
 [[detour]]
 owner  = "0023-isr-meter"
 addr   = 0x40120c88
 size   = 6
 expect = "4eb94010e3b4"
-entry  = "m_s1a"
+entry  = "m_k1"
 
-# S1's end and S2's start: `tstl 0x8000fce8`, re-emitted last for the beqs after it.
+# Mark 2, after the smoothing and interpolation: `tstl 0x8000fce8`, re-emitted last
+# for the beqs after it.
 [[detour]]
 owner  = "0023-isr-meter"
 addr   = 0x40120e32
 size   = 6
 expect = "4ab98000fce8"
-entry  = "m_s1b"
+entry  = "m_k2"
 
-# S2's end: `movel 0x40287c9c,%sp@-`, the argument of 0004's lfo_block detour at
-# 0x40120fae, re-emitted. The bnes at 0x40120f5a lands on its first byte.
+# Mark 3, before the LFOs: `movel 0x40287c9c,%sp@-`, the argument of 0004's
+# lfo_block detour at 0x40120fae, re-emitted. The bnes at 0x40120f5a and 0024's
+# bra.w at 0x40120f08 land on its first byte.
 [[detour]]
 owner  = "0023-isr-meter"
 addr   = 0x40120fa8
 size   = 6
 expect = "2f3940287c9c"
-entry  = "m_s2b"
+entry  = "m_k3"
 
-# Before USB, main path: `pea 0x80007440`, re-emitted. The bnes at 0x401213cc
-# lands on its first byte.
+# Mark 4, after the LFOs and 0004's random modifiers: `lea 0x80005eac,%a0`,
+# re-emitted. Nothing branches into 0x40120fb9..0x40120fbd.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40120fb8
+size   = 6
+expect = "41f980005eac"
+entry  = "m_k4"
+
+# Mark 5, after the per-voice machine calls: `jsr 0x4011c64c`, re-emitted after the
+# mark. Nothing branches into 0x40121219..0x4012121d.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121218
+size   = 6
+expect = "4eb94011c64c"
+entry  = "m_k5"
+
+# Mark 6, before the receive fill: `jsr 0x4010e944`, re-emitted after the mark.
+# Nothing branches into 0x40121359..0x4012135d.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121358
+size   = 6
+expect = "4eb94010e944"
+entry  = "m_k6"
+
+# Marks 7 and 8, around the stock FX generation: over `addql #4,%sp`, `movel
+# %d2,%sp@` and the first half of `jsr 0x4010e650`, all re-emitted, rejoining at
+# 0x401213a0 (0019's fx_post). 0013's timing build holds the same six bytes;
+# it is off. Nothing branches into 0x40121398..0x4012139b.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x40121396
+size   = 6
+expect = "588f2e824eb9"
+entry  = "m_k78"
+rejoin = 0x401213a0
+
+# Mark 9, after 0019's fx_post: `lea 0x8000e4d4,%a0`, re-emitted (0019 rejoins
+# here). Nothing branches into 0x401213ab..0x401213af.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x401213aa
+size   = 6
+expect = "41f98000e4d4"
+entry  = "m_k9"
+
+# Mark 10 and the emitter, before USB, main path: `pea 0x80007440`, re-emitted.
+# The bnes at 0x401213cc lands on its first byte.
 [[detour]]
 owner  = "0023-isr-meter"
 addr   = 0x40121434
@@ -5043,7 +5099,16 @@ size   = 6
 expect = "487980007440"
 entry  = "m_emit"
 
-# The interrupt's single exit (both paths): `moveml %fp@(-32),%d0-%d6/%a0`,
+# Mark 11, after the USB and sampler sends, before the voice DMA copy: `pea
+# 0x800063c0`, re-emitted. Nothing branches into 0x4012145f..0x40121463.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x4012145e
+size   = 6
+expect = "4879800063c0"
+entry  = "m_k11"
+
+# Mark 12, the interrupt's single exit (both paths): `moveml %fp@(-32),%d0-%d6/%a0`,
 # re-emitted; the bles at 0x40121626 and bnes at 0x40121630 land on its first byte.
 [[detour]]
 owner  = "0023-isr-meter"
