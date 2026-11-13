@@ -8,7 +8,10 @@
         | frame, (tag << 24) | (value << 8):
         |   0x50  the whole run / 4           0x51  the interval / 4
         |   0x52..0x65  section 1..20 in ticks (mark k - mark k-1)
-        |   0x66  a block counter             0x67..0x6f  0
+        |   0x66  a block counter
+        |   0x67  mark 21 - mark 5: 0x4011c64c's entry up to the end of its
+        |         wait for the previous sample DMA (eDMA CSR DONE)
+        |   0x68..0x6f  0
         | each held at 0xffff. Marks the alternate path never reaches keep the
         | entry's time, so its sections read 0. tools/isr_meter.py names them.
         |
@@ -41,9 +44,9 @@
         .equ    RXSTRIDE,       48
         .equ    FRAMES,         32
         .equ    T_SLOT,         8 + 4 * 7         | voice slot 7: USB channel 10
-        .equ    MARKS,          21
+        .equ    SECTIONS,       20                | marks 0..20 along the path, 20 the exit
+        .equ    MARKS,          22                | + mark 21, inside 0x4011c64c
         .equ    WORDS,          32
-        .equ    SECTIONS,       MARKS - 1
 
         .text
 
@@ -173,6 +176,11 @@ m_k13:
         mark    13
         jsr     0x4010ede2                        | displaced
         jmp     0x4012133e
+        .align  2
+m_k21:
+        mark    21
+        move.l  0x8000583c,%d1                    | displaced, last
+        jmp     0x4011c67e
         .text
 
         | m_out: every data and address register is about to be reloaded
@@ -186,18 +194,18 @@ m_out:
         sub.l   (%a0),%d0                         | the whole run
         lsr.l   #2,%d0
         move.l  #0x50,%d2
-        bsr.s   m_pack
+        jsr     m_pack
         move.l  m_iv,%d0
         lsr.l   #2,%d0
         moveq   #0x51,%d2
-        bsr.s   m_pack
+        jsr     m_pack
         moveq   #SECTIONS-1,%d3                   | sections 1..20
 1:      move.l  4(%a0),%d0
         sub.l   (%a0)+,%d0
         bpl.s   2f
         moveq   #0,%d0
 2:      addq.l  #1,%d2
-        bsr.s   m_pack
+        jsr     m_pack
         subq.l  #1,%d3
         bpl.s   1b
         move.l  m_cnt,%d0
@@ -205,18 +213,26 @@ m_out:
         move.l  %d0,m_cnt
         and.l   #0xffff,%d0
         moveq   #0x66,%d2
-        bsr.s   m_pack
-        moveq   #0x6f-0x66-1,%d3                  | the rest 0
+        jsr     m_pack
+        move.l  m_mk+4*21,%d0
+        sub.l   m_mk+4*5,%d0
+        bpl.s   4f
+        moveq   #0,%d0
+4:      moveq   #0x67,%d2
+        jsr     m_pack
+        moveq   #0x6f-0x67-1,%d3                  | the rest 0
 3:      moveq   #0,%d0
         addq.l  #1,%d2
-        bsr.s   m_pack
+        jsr     m_pack
         subq.l  #1,%d3
         bpl.s   3b
         movem.l -32(%fp),%d0-%d6/%a0              | displaced
         jmp     0x40121640
 
         | m_pack(d0 value, d2 tag, a1 the word): held at 0xffff, stored as
-        | (tag << 24) | (value << 8), a1 advanced. Uses d0, d1.
+        | (tag << 24) | (value << 8), a1 advanced. Uses d0, d1. In cave16.
+        .section .mk3,"ax"
+        .align  2
 m_pack:
         cmp.l   #0xffff,%d0
         bls.s   1f
@@ -228,6 +244,7 @@ m_pack:
         or.l    %d1,%d0
         move.l  %d0,(%a1)+
         rts
+        .text
 
         | m_emit: mark 10, then the words over slot 7, frame f word f mod 16;
         | keeps every register; the displaced pea last.

@@ -80,7 +80,10 @@ def decode(x):
         cols.append(v.astype(np.float64))
     n = min(len(c) for c in cols)
     cols = [c[:n] for c in cols]
-    return {"run": cols[0] * 4, "iv": cols[1] * 4, "sec": np.stack(cols[2:], 1),
+    wait = val[tag == 0x67].astype(np.float64)[:n]
+    if len(wait) < n:
+        wait = np.zeros(n)
+    return {"run": cols[0] * 4, "iv": cols[1] * 4, "sec": np.stack(cols[2:], 1), "wait": wait,
             "tagged": ((tag >= 0x50) & (tag <= 0x6f)).mean()}
 
 
@@ -102,6 +105,9 @@ def report(d):
         total += np.median(s)
         print(f"  {k + 1:2d} {name:35s} median {np.median(s):6.2f}%  p99 {np.percentile(s, 99):6.2f}%"
               f"  max {s.max():6.2f}%")
+    w = pct(d["wait"], iv)
+    print(f"     of 6: entry + sample-DMA wait  median {np.median(w):6.2f}%  p99 {np.percentile(w, 99):6.2f}%"
+          f"  max {w.max():6.2f}%")
     print(f"  sum of section medians {total:.2f}%;  headroom (100 - p99 of whole)"
           f" {100 - np.percentile(r, 99):.2f}%")
 

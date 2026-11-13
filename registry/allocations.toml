@@ -5239,3 +5239,20 @@ addr   = 0x400008e8
 size   = 6
 expect = "203c4007e020"
 entry  = "cache_acr1"
+
+[[cave]]
+owner   = "0023-isr-meter"
+addr    = 0x400b21b4
+size    = 0x20
+section = ".mk3"
+note    = "In cave16's free tail: the meter's word packer."
+
+# Mark 21, inside 0x4011c64c after its wait for the previous sample DMA (the
+# eDMA CSR DONE poll at 0x4011c662): `movel 0x8000583c,%d1`, re-emitted. The beqs at
+# 0x4011c65a lands on its first byte; nothing branches into its last five.
+[[detour]]
+owner  = "0023-isr-meter"
+addr   = 0x4011c678
+size   = 6
+expect = "22398000583c"
+entry  = "m_k21"
