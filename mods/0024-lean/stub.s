@@ -17,7 +17,11 @@
         .equ    WORK_LEN,       1144
         .equ    TARGETS,        0x8000e57c        | what the smoothing leaves in a0
         .equ    INTERP_ARR,     0x8000f7a8        | the interpolation's displaced lea
-        .equ    SNAP,           0x4B680000        | the copy, in 0022's SDRAM
+        | The copy is in four code caves, the only memory both free and in the
+        | data cache's window (ACR0: 0x40000000..0x47ffffff copyback; the
+        | rest, SDRAM at 0x4b... included, is uncached, where the first version
+        | kept it: its copies cost about 3.7% of a block). snap0..snap3 below,
+        | 512 + 264 + 248 + 120 = 1144 bytes.
 
         .equ    SMOOTH_RESUME,  0x40120c94
         .equ    SMOOTH_SKIP,    0x40120ce4        | past the loop and its last store
@@ -51,8 +55,7 @@ lean_interp:
         jmp     INTERP_RESUME
 1:      lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
-        lea     SNAP,%a0
-        lea     WORK,%a1
+        moveq   #0,%d0                            | caves -> WORK
         bsr.s   lean_copy
         movem.l (%sp),%d0-%d7/%a0-%a5
         lea     56(%sp),%sp
@@ -66,38 +69,77 @@ lean_snap:
         beq.s   9f
         lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
-        lea     WORK,%a0
-        lea     SNAP,%a1
+        moveq   #1,%d0                            | WORK -> caves
         bsr.s   lean_copy
         movem.l (%sp),%d0-%d7/%a0-%a5
         lea     56(%sp),%sp
 9:      move.l  #SNAP_D7,%d7                      | displaced
         jmp     SNAP_RESUME
 
-        | lean_copy(a0 from, a1 to): WORK_LEN bytes, 48 at a time, then 40.
-        | Uses d0-d7, a0-a5.
+        | lean_copy(d0 = 0 restore, 1 take): WORK against the four caves in
+        | turn, 32 bytes a movem, then longs. Uses d0-d7, a0-a5.
         .align  2
 lean_copy:
-        lea     WORK_LEN-40(%a0),%a2
-        move.l  %a2,%d0
-        move.l  %d0,lean_end
-1:      movem.l (%a0),%d0-%d7/%a2-%a5
-        movem.l %d0-%d7/%a2-%a5,(%a1)
-        lea     48(%a0),%a0
-        lea     48(%a1),%a1
-        cmpa.l  lean_end,%a0
-        bne.s   1b
-        movem.l (%a0),%d0-%d7/%a2-%a3
-        movem.l %d0-%d7/%a2-%a3,(%a1)
-        rts
+        move.l  %d0,%a5                           | the direction
+        lea     WORK,%a4                          | the WORK side, running
+        lea     lean_chunks,%a3
+1:      move.l  (%a3)+,%a2                        | the cave
+        move.l  (%a3)+,%d1                        | its length
+        beq.s   9f
+        move.l  %a2,%a0                           | from the cave ...
+        move.l  %a4,%a1                           | ... to WORK
+        move.l  %a5,%d0                           | d0 is set again below
+        tst.l   %d0
+        beq.s   3f
+        move.l  %a4,%a0                           | or from WORK to the cave
+        move.l  %a2,%a1
+3:      adda.l  %d1,%a4
+2:      moveq   #32,%d0
+        cmp.l   %d0,%d1
+        bcs.s   4f
+        move.l  %d1,-(%sp)
+        movem.l (%a0),%d0-%d7
+        movem.l %d0-%d7,(%a1)
+        move.l  (%sp)+,%d1
+        lea     32(%a0),%a0
+        lea     32(%a1),%a1
+        moveq   #32,%d0
+        sub.l   %d0,%d1
+        bra.s   2b
+4:      tst.l   %d1
+        beq.s   1b
+5:      move.l  (%a0)+,(%a1)+
+        subq.l  #4,%d1
+        bne.s   5b
+        bra.s   1b
+9:      rts
 
-        .if     (WORK_LEN - 40) % 48
-        .error  "0024-lean: the copy's 48-byte steps must end 40 bytes short"
+        .align  2
+lean_chunks:
+        .long   snap0, 512
+        .long   snap1, 264
+        .long   snap2, 248
+        .long   snap3, 120
+        .long   0, 0
+
+        .if     512 + 264 + 248 + 120 - WORK_LEN
+        .error  "0024-lean: the caves must hold WORK_LEN bytes"
         .endif
 
         .align  2
 lean_par: .long 0                                 | 1 on a computing block
-lean_end: .long 0
+        .endif
+
+        .if     P_HALF
+        .section .snap0,"aw"
+snap0:  .space  512
+        .section .snap1,"aw"
+snap1:  .space  264
+        .section .snap2,"aw"
+snap2:  .space  248
+        .section .snap3,"aw"
+snap3:  .space  120
+        .text
         .endif
 
         .if     P_HALF == 0

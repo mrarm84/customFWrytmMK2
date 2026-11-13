@@ -4879,8 +4879,43 @@ from_symbol = "txt_r2oct_s"
 [[cave]]
 owner = "0024-lean"
 addr  = 0x401b70d8
-size  = 0xd0
-note  = "In cave22: the half-rate smoothing's three detour bodies, the 1144 B copy routine, the block parity and a scratch word. The copy itself is in the SDRAM 0022 freed, at 0x4B680000."
+size  = 0x120
+note  = "In cave22: the half-rate smoothing's three detour bodies, the chunked copy routine, its chunk table and the block parity."
+
+# The working array's copy, 1144 B, in the data cache's window (ACR0 covers only
+# 0x40000000..0x47ffffff; SDRAM at 0x4b... is uncached, and a copy there cost about
+# 3.7% of a block on the unit). Four caves, written at run time.
+[[cave]]
+owner   = "0024-lean"
+addr    = 0x401ba290
+size    = 0x200
+section = ".snap0"
+gate    = "half"
+note    = "Bytes 0..511 of the working array's copy."
+
+[[cave]]
+owner   = "0024-lean"
+addr    = 0x40137a48
+size    = 0x108
+section = ".snap1"
+gate    = "half"
+note    = "Bytes 512..775 of the working array's copy."
+
+[[cave]]
+owner   = "0024-lean"
+addr    = 0x4002891c
+size    = 0xf8
+section = ".snap2"
+gate    = "half"
+note    = "Bytes 776..1023 of the working array's copy."
+
+[[cave]]
+owner   = "0024-lean"
+addr    = 0x400272bc
+size    = 0x78
+section = ".snap3"
+gate    = "half"
+note    = "Bytes 1024..1143 of the working array's copy."
 
 # The smoothing loop's set-up: `lea 0x8000f774,%a4`, re-emitted on computing blocks;
 # on the others the stub goes on at 0x40120ce4 with a0 = 0x8000e57c, as the loop

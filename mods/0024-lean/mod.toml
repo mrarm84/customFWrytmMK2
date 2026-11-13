@@ -19,9 +19,12 @@ modify it in place and would otherwise add twice). The glide's coefficients are
 squared to keep its time: 0.03 / 0.97 a block becomes 0.0591 / 0.9409 every
 other block, so knobs still settle in about 22 ms; parameters now step every
 1.33 ms instead of 0.67 ms. Discrete words the loop at 0x40120ce8 copies in
-take effect up to two blocks later. The copy, 1144 B, lives in the SDRAM 0022
-freed, at 0x4B680000 (between 0021's tables, which end by 0x4B653080, and
-0019's chorus at 0x4B700000).
+take effect up to two blocks later. The copy, 1144 B, is in four code caves
+(cave6, cave7, cave5, cave11), the only free memory inside the data cache's
+window (ACR0: 0x40000000..0x47ffffff). The first version kept it in 0022's
+SDRAM at 0x4B680000, which is uncached: on the unit (meter, 2026-11-13) its
+restore cost about 2.5% of a block and its copy about 1.2%, nearly all of the
+gain.
 
 cut: performance mode's 48 locks and CONTROL IN 1/2 MOD are no longer applied:
 adc_pedal_update is not called and the code from 0x40120f08 to 0x40120fa6 (the
@@ -42,5 +45,4 @@ cut = 1
 
 [requires]
 shared = false
-mods   = ["0022-fx-ram"]
 symbols = []
