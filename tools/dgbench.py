@@ -17,6 +17,28 @@ from unicorn.m68k_const import UC_M68K_REG_A7, UC_M68K_REG_PC, UC_CPU_M68K_CFV4E
 
 BASE = 0x40000400
 WAVE_BUF, MSTATE, EXT_STATE = 0x80006bf8, 0x8000fef8, 0x4B600000
+SMP_TAB, SMP_ADDR, SMP_LEN = 0x41329e70, 0x4F000000, 48000     # 1 s, 16-bit
+
+
+def test_sample():
+    """1 s of a voice-like test sample, 16-bit big-endian: a 110 Hz pulse
+    train through two formants sweeping from "ah" to "ee", in three
+    syllables, so grains of it are recognisable."""
+    import math
+    out = bytearray()
+    ph = 0.0
+    for i in range(SMP_LEN):
+        t = i / 48000
+        f1 = 700 - 400 * t                     # 700 -> 300 Hz
+        f2 = 1200 + 1100 * t                   # 1200 -> 2300 Hz
+        env = max(0.0, math.sin(math.pi * ((t * 3) % 1)))   # three syllables
+        ph += 110 / 48000
+        s = sum(math.sin(2 * math.pi * h * ph) / h *
+                (math.exp(-((h * 110 - f1) / 120) ** 2)
+                 + 0.6 * math.exp(-((h * 110 - f2) / 200) ** 2))
+                for h in range(1, 30))
+        out += struct.pack(">h", int(max(-1.0, min(1.0, 1.8 * s * env)) * 30000))
+    return bytes(out)
 VOICE_RESET = 0x4011e456
 STACK_TOP = 0x90010000
 RET_MAGIC = 0x90020000
@@ -26,7 +48,7 @@ BUDGET = CPU_HZ * FRAMES // RATE        # cycles in one block at 266 MHz
 OBJDUMP = "m68k-elf-objdump"
 
 MACHINES = ["dg_sine", "dg_saw", "dg_pulse", "dg_fm2", "dg_organ",
-            "dg_chord", "dg_super", "dg_pluck", "dg_chip", "dg_fold"]
+            "dg_chord", "dg_super", "dg_pluck", "dg_chip", "dg_fold", "dg_grain"]
 
 
 def k(v):
@@ -57,6 +79,10 @@ SCEN = {
     "dg_fold":  {"plain": [100, 64, 127, 64, 0, 64, 0, 0],
                  "mid":   [100, 64, 127, 64, 64, 64, 0, 0],
                  "busy":  [100, 64, 127, 64, 100, 90, 80, 60]},
+    # GRAIN: POS SIZ DEN SPR, then SMP (slot 1, the test sample; 0 the sine)
+    "dg_grain": {"plain": [100, 64, 127, 64, 0, 48, 48, 16, 0],
+                 "smp":   [100, 64, 127, 64, 32, 48, 48, 16, 1],
+                 "cloud": [100, 64, 127, 64, 64, 90, 110, 80, 1]},
     "dg_chip":  {"plain": [100, 64, 127, 64, 2, 0, 0, 64],
                  "busy":  [100, 64, 110, 64, 1, 3, 100, 70]},
 }
@@ -123,6 +149,12 @@ class Machine:
         uc.mem_map(0x80000000, 0x20000)                     # SRAM
         uc.mem_map(EXT_STATE, 0x100000)                     # SDRAM 0022 freed
         uc.mem_map(0x90000000, 0x30000)                     # stack, return
+        uc.mem_map(0xfc070000, 0x1000)                      # DMA timer 0 (reads 0)
+        # the sample slot table and a test sample in slot 1, for DG GRAIN
+        uc.mem_map(0x41300000, 0x100000)
+        uc.mem_map(SMP_ADDR, 0x100000)
+        uc.mem_write(SMP_ADDR, test_sample())
+        uc.mem_write(SMP_TAB + 16, struct.pack(">IIII", SMP_ADDR, 48000, SMP_LEN, 0x40000000))
         uc.mem_write(RET_MAGIC, b"\x4e\x71\x4e\x71")
         self.uc = uc
         self.n = 0
@@ -149,7 +181,9 @@ class Machine:
     def block(self, fn, v, params, pitch=60 << 16):
         uc = self.uc
         p = 0x90018000 + 32 * v
-        uc.mem_write(p, struct.pack(">8h", *[k(x) for x in params]))
+        uc.mem_write(p, struct.pack(">8h", *[k(x) for x in params[:8]]))
+        smp = params[8] if len(params) > 8 else 0          # sound index 19, SMP
+        uc.mem_write(p + 20, struct.pack(">h", k(smp)))
         sp = STACK_TOP - 64
         uc.mem_write(sp, struct.pack(">5I", RET_MAGIC, v, 0x800063c0, p, pitch & 0xffffffff))
         uc.reg_write(UC_M68K_REG_A7, sp)

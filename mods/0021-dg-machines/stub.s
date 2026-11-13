@@ -141,6 +141,13 @@
         .equ    P_FLD,          8                 | 13 (FOLD)
         .equ    P_SYM,          10                | 14
         .equ    P_FEN,          12                | 15
+        .equ    P_POS,          8                 | 13 (GRAIN)
+        .equ    P_SIZ,          10                | 14
+        .equ    P_DEN,          12                | 15
+        .equ    P_SPR,          14                | 16
+        .equ    P_SMP,          20                | 19: the SAMPLE page's SMP, the slot
+        .equ    SMP_TAB,        0x41329e70        | 16 B a slot: +0 start, +8 length
+                                                  | (16-bit samples), +12 rate, Q30
 
         | every machine starts the same way
         .macro  DG_ENTRY
@@ -1865,6 +1872,7 @@ fix_ids:
         .word   447, 448, 390, 391, 392, 393, 394, 395, 396
         .word   382, 383, 384, 385, 386, 387, 388, 389
         .word   342, 343, 344, 345, 346, 347, 348, 349     | batch 4: FOLD
+        .word   350, 351, 352, 353, 354, 355, 356, 357     | GRAIN
         .word   ID_SENTINEL, 0
 
         | ==================================================================
@@ -2048,4 +2056,308 @@ txt_sym_l:      .asciz  "Symmetry"
 txt_sym_s:      .asciz  "SYM"
 txt_fen_l:      .asciz  "Fold Env"
 txt_fen_s:      .asciz  "FEN"
+        .align  2
+
+        | ==================================================================
+        | cave34 (.text10): DG GRAIN, in SD HARD 2's routine (machine 37).
+        | ==================================================================
+        .section .text10,"ax"
+        .align  2
+
+        | ------------------------------------------------------------ DG GRAIN
+        | Grains of the track's sample (SAMPLE page SMP; SMP OFF: an internal
+        | sine), up to four at once: each a Hann window (sin^2 from SIN_TAB)
+        | over SIZ (5..400 ms), reading the sample with linear interpolation at
+        | the note's pitch times the sample's own rate. A new grain starts
+        | every 48000 / (1 + DEN^2/80) frames (about 1..200 a second) at POS
+        | across the sample plus a random offset of up to SPR (to 1 s); when
+        | all four are busy it is skipped. Then the level (no SUB).
+        |
+        | State, EXT_STATE + 256v + 128 (uncached, touched once a grain a
+        | block): +0 frames to the next grain, +4 the draw's seed, +8 four
+        | grains of {idx, frac (15 bits), window phase (0..2^32), window step
+        | (0 free), the frame it starts at in this block}, 20 bytes each.
+        .equ    G_NEXT,         0
+        .equ    G_SEED,         4
+        .equ    G_GRAINS,       8
+        .equ    GR_IDX,         0
+        .equ    GR_FRAC,        4
+        .equ    GR_WPOS,        8
+        .equ    GR_WSTEP,       12
+        .equ    GR_SF,          16
+        .equ    GR_SIZE,        20
+        .equ    NGRAINS,        4
+        .equ    C4_NOTE,        60 << 16
+        .equ    GR_DTCN0,       0xfc07000c        | DMA timer 0, to seed the draw
+
+dg_grain:
+        DG_ENTRY
+        jsr     dg_enter
+        tst.l   %d0
+        bne.s   0f
+        jmp     dg_exit
+0:      move.l  %d7,%d0                           | a6 = the grain state
+        lsl.l   #8,%d0
+        add.l   #EXT_STATE+128,%d0
+        movea.l %d0,%a6
+        tst.l   ST_PH1(%a2)                       | the trig: dg_enter zeroed PH1
+        bne.s   1f
+        moveq   #1,%d0
+        move.l  %d0,ST_PH1(%a2)
+        clr.l   G_NEXT(%a6)
+        move.l  GR_DTCN0,%d0
+        add.l   %d7,%d0
+        move.l  %d0,G_SEED(%a6)
+        lea     G_GRAINS(%a6),%a0
+        moveq   #NGRAINS-1,%d1
+2:      clr.l   GR_WSTEP(%a0)
+        lea     GR_SIZE(%a0),%a0
+        subq.l  #1,%d1
+        bpl.s   2b
+
+        | the source: the slot's sample, or the sine table looped
+1:      mvz.w   P_SMP(%a3),%d0
+        lsr.l   #8,%d0
+        and.l   #0xff,%d0
+        beq.s   3f
+        lsl.l   #4,%d0
+        add.l   #SMP_TAB,%d0
+        movea.l %d0,%a0
+        move.l  8(%a0),%d1                        | length, samples
+        moveq   #4,%d2
+        cmp.l   %d2,%d1
+        bcs.s   3f                                | empty slot
+        subq.l  #2,%d1
+        move.l  %d1,gr_lim                        | last idx with one after it
+        addq.l  #2,%d1
+        move.l  12(%a0),%d2                       | rate, Q30
+        moveq   #18,%d0
+        lsr.l   %d0,%d2                           | Q12
+        move.l  %d2,gr_ratio
+        move.l  (%a0),gr_base
+        moveq   #-1,%d0
+        move.l  %d0,gr_mask                       | no wrap
+        bra.s   4f
+3:      move.l  #SIN_TAB,%d0                      | no sample: the sine, looped
+        move.l  %d0,gr_base
+        move.l  #4095,%d0
+        move.l  %d0,gr_mask
+        move.l  #0x7fffffff,%d0
+        move.l  %d0,gr_lim
+        move.l  #4096,%d0
+        move.l  %d0,gr_ratio                      | 1.0, Q12
+        move.l  #4096,%d1                         | its length, for POS
+4:      move.l  %d1,gr_len
+
+        | the step, 17.15 samples a frame: the note's increment over C4's,
+        | times the rate; for the sine, the oscillator's increment itself
+        jsr     dg_note
+        move.l  %d3,%d0
+        jsr     dg_inc
+        move.l  %d0,%d4                           | inc(note)
+        move.l  gr_mask,%d0
+        cmp.l   #4095,%d0
+        bne.s   5f
+        moveq   #5,%d1                            | the sine: 4096 points a cycle,
+        lsr.l   %d1,%d4                           | inc / 2^20 samples = inc >> 5, 17.15
+        bra.s   6f
+5:      move.l  #C4_NOTE,%d0
+        jsr     dg_inc
+        moveq   #16,%d1
+        lsr.l   %d1,%d0                           | inc(C4) >> 16
+        bne.s   7f
+        moveq   #1,%d0
+7:      lsr.l   #1,%d4                            | inc(note) / 2 ...
+        divu.l  %d0,%d4                           | ... over inc(C4) >> 16: rel, 17.15
+        move.l  gr_ratio,%d1
+        lsr.l   #2,%d4                            | headroom: 17.13
+        mulu.l  %d1,%d4                           | times the rate, Q12
+        moveq   #10,%d1
+        lsr.l   %d1,%d4                           | 17.15
+6:      move.l  %d4,gr_step
+
+        | the grain's window: 240 + 19 SIZ^2 / 16 frames
+        move.w  P_SIZ(%a3),%d0
+        ext.l   %d0
+        asr.l   #8,%d0
+        muls.l  %d0,%d0
+        moveq   #19,%d1
+        muls.l  %d1,%d0
+        asr.l   #4,%d0
+        add.l   #240,%d0
+        moveq   #-1,%d1
+        divu.l  %d0,%d1
+        move.l  %d1,gr_wstep
+        | the interval: 48000 / (1 + DEN^2 / 80)
+        move.w  P_DEN(%a3),%d0
+        ext.l   %d0
+        asr.l   #8,%d0
+        muls.l  %d0,%d0
+        moveq   #80,%d1
+        divu.l  %d1,%d0
+        addq.l  #1,%d0
+        move.l  #48000,%d1
+        divu.l  %d0,%d1
+        move.l  %d1,gr_ival
+        | the spray: up to 48000 frames, SPR^2 * 3
+        move.w  P_SPR(%a3),%d0
+        ext.l   %d0
+        asr.l   #8,%d0
+        muls.l  %d0,%d0
+        moveq   #3,%d1
+        muls.l  %d1,%d0
+        move.l  %d0,gr_spray
+        | the position: POS / 128 of the length
+        move.w  P_POS(%a3),%d0
+        ext.l   %d0
+        asr.l   #8,%d0
+        move.l  gr_len,%d1
+        lsr.l   #7,%d1
+        mulu.l  %d1,%d0
+        move.l  %d0,gr_pos
+
+        | the grains to start this block: a free slot each, from its frame on
+        lea     G_GRAINS(%a6),%a0
+        moveq   #NGRAINS-1,%d1
+8:      clr.l   GR_SF(%a0)                        | running ones: from frame 0
+        lea     GR_SIZE(%a0),%a0
+        subq.l  #1,%d1
+        bpl.s   8b
+        move.l  G_NEXT(%a6),%d5
+9:      moveq   #FRAMES,%d0
+        cmp.l   %d0,%d5
+        bge.w   20f
+        lea     G_GRAINS(%a6),%a0                 | a free slot?
+        moveq   #NGRAINS-1,%d1
+10:     tst.l   GR_WSTEP(%a0)
+        beq.s   11f
+        lea     GR_SIZE(%a0),%a0
+        subq.l  #1,%d1
+        bpl.s   10b
+        bra.s   12f                               | all busy: skip this one
+11:     move.l  G_SEED(%a6),%d0                   | the spray's draw
+        move.l  #1103515245,%d1
+        mulu.l  %d1,%d0
+        add.l   #12345,%d0
+        move.l  %d0,G_SEED(%a6)
+        swap    %d0
+        and.l   #0xffff,%d0
+        move.l  gr_spray,%d1
+        mulu.l  %d1,%d0
+        swap    %d0
+        and.l   #0xffff,%d0                       | 0 .. spray
+        add.l   gr_pos,%d0
+        move.l  gr_mask,%d1
+        and.l   %d1,%d0
+        cmp.l   gr_lim,%d0
+        bcs.s   13f
+        moveq   #0,%d0                            | past the end: from the start
+13:     move.l  %d0,GR_IDX(%a0)
+        clr.l   GR_FRAC(%a0)
+        clr.l   GR_WPOS(%a0)
+        move.l  gr_wstep,%d1
+        move.l  %d1,GR_WSTEP(%a0)
+        tst.l   %d5
+        bpl.s   14f
+        moveq   #0,%d5
+14:     move.l  %d5,GR_SF(%a0)
+12:     move.l  gr_ival,%d0
+        add.l   %d0,%d5
+        bra.w   9b
+20:     sub.l   #FRAMES,%d5
+        move.l  %d5,G_NEXT(%a6)
+
+        | render: the buffer cleared, then each running grain added in
+        moveq   #0,%d0
+        movea.l %a4,%a0
+        moveq   #FRAMES-1,%d1
+21:     move.l  %d0,(%a0)+
+        subq.l  #1,%d1
+        bpl.s   21b
+        move.l  %a2,-(%sp)                        | the state, for the level
+        movea.l gr_base,%a0
+        lea     SIN_TAB,%a1
+        lea     G_GRAINS(%a6),%a2                 | a2 now walks the grains
+        moveq   #NGRAINS,%d0
+        move.l  %d0,gr_left
+22:     move.l  GR_WSTEP(%a2),%d5
+        beq.w   29f
+        move.l  GR_IDX(%a2),%d2
+        move.l  GR_FRAC(%a2),%d3
+        move.l  GR_WPOS(%a2),%d4
+        move.l  GR_SF(%a2),%d0
+        movea.l %a4,%a5
+        lea     (%a5,%d0.l*4),%a5
+        moveq   #FRAMES,%d7
+        sub.l   %d0,%d7
+        move.l  gr_step,%d6
+23:     mvs.w   2(%a0,%d2.l*2),%d1                | v = s0 + (s1 - s0) frac
+        mvs.w   (%a0,%d2.l*2),%d0
+        sub.l   %d0,%d1
+        muls.l  %d3,%d1
+        asr.l   #8,%d1
+        asr.l   #7,%d1
+        add.l   %d1,%d0
+        move.l  %d4,%d1                           | w = sin^2(pi wpos / 2^32)
+        swap    %d1
+        and.l   #0xffff,%d1
+        lsr.l   #5,%d1
+        mvs.w   (%a1,%d1.l*2),%d1
+        muls.l  %d1,%d1
+        asr.l   #8,%d1
+        asr.l   #7,%d1
+        muls.l  %d1,%d0
+        asr.l   #8,%d0
+        asr.l   #7,%d0                            | v w, full scale; overlaps are
+        add.l   %d0,(%a5)+                        | held at the level pass
+        add.l   %d6,%d3                           | the read position
+        move.l  %d3,%d1
+        asr.l   #8,%d1
+        asr.l   #7,%d1
+        add.l   %d1,%d2
+        and.l   #0x7fff,%d3
+        move.l  gr_mask,%d1
+        and.l   %d1,%d2
+        cmp.l   gr_lim,%d2
+        bcc.s   24f                               | the sample's end
+        add.l   %d5,%d4                           | the window
+        bcs.s   24f                               | the window's end
+        subq.l  #1,%d7
+        bne.s   23b
+        move.l  %d2,GR_IDX(%a2)
+        move.l  %d3,GR_FRAC(%a2)
+        move.l  %d4,GR_WPOS(%a2)
+        bra.s   29f
+24:     clr.l   GR_WSTEP(%a2)                     | done: the slot is free
+29:     lea     GR_SIZE(%a2),%a2
+        subq.l  #1,gr_left
+        bne.w   22b
+        movea.l (%sp)+,%a2
+        movea.l A_CTRL(%sp),%a5
+        jsr     dg_levelpass
+        jmp     dg_exit
+
+        .align  2
+gr_base:  .long 0
+gr_len:   .long 0
+gr_lim:   .long 0
+gr_mask:  .long 0
+gr_ratio: .long 0
+gr_step:  .long 0
+gr_wstep: .long 0
+gr_ival:  .long 0
+gr_spray: .long 0
+gr_pos:   .long 0
+gr_left:  .long 0
+
+txt_grain_long:  .asciz "DG GRAIN"
+txt_grain_short: .asciz "GRN"
+txt_pos_l:      .asciz  "Position"
+txt_pos_s:      .asciz  "POS"
+txt_siz_l:      .asciz  "Grain Size"
+txt_siz_s:      .asciz  "SIZ"
+txt_den_l:      .asciz  "Density"
+txt_den_s:      .asciz  "DEN"
+txt_spr_l:      .asciz  "Spray"
+txt_spr_s:      .asciz  "SPR"
         .align  2

@@ -44,6 +44,16 @@ MACHINES = {
         "row": ["TUN", "FIN", "FLD", "DEC", "SYM", "FEN", "SUB", "LEV"],
         "title": "DG FOLD",
     },
+    "grain": {
+        "slot": 37, "entry": "dg_grain", "names": ("txt_grain_long", "txt_grain_short"),
+        "ids": list(range(350, 358)),
+        "own": [("POS", "txt_pos_l", "txt_pos_s", 0x7f00, 0x0000, 0),
+                ("SIZ", "txt_siz_l", "txt_siz_s", 0x7f00, 0x3000, 0),
+                ("DEN", "txt_den_l", "txt_den_s", 0x7f00, 0x3000, 0),
+                ("SPR", "txt_spr_l", "txt_spr_s", 0x7f00, 0x1000, 0)],
+        "row": ["TUN", "FIN", "POS", "DEC", "SIZ", "DEN", "SPR", "LEV"],
+        "title": "DG GRAIN",
+    },
 }
 
 
