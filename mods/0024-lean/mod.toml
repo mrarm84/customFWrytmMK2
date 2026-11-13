@@ -38,8 +38,13 @@ routes are untouched.
 stub = "stub.s"
 
 [params]
-# 1 runs the smoothing and the interpolation every other block.
-half = 1
+# 1 runs the smoothing and the interpolation every other block. Off: measured on
+# the unit (2026-11-13, builds 17 and 20) the working array's copy costs about
+# 2.7% of a block to restore and 2.0% to take wherever it lives outside on-chip
+# SRAM (the rest of the interrupt evicts it from the cache), so the average gain
+# was nil and every computing block about 2% heavier. Needs the copy in SRAM, or
+# a design without a copy, before it is worth turning on.
+half = 0
 # 1 drops performance locks and CV modulation from the interrupt.
 cut = 1
 
