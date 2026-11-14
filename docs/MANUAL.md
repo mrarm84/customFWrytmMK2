@@ -18,7 +18,7 @@ The default image is
 | 0014 | TRK + any knob | turn that parameter on every sound track |
 | 0015 | SOUND SETTINGS > ENV RESET | AMP and AMP+FILT: the amp envelope restarts on every trig |
 | 0019 | FX track: REVERB page encoder G (turn, press), REVERB 2 page; DISTORTION page D/E/F; AUDIO ROUTING > DIST FILTER | phaser on the reverb or delay input; octaver, crusher, hiss, chorus, comb and ring mod on REVERB 2, each movable to the delay; a filter feeding the distortion |
-| 0020 | none | a gate into CTRL IN 1 plays T1, into CTRL IN 2 plays T2, once a gate |
+| 0020 | SETTINGS > AUDIO ROUTING > AUDIO IN | a gate into CTRL IN 1 plays T1, into CTRL IN 2 plays T2, once a gate; at AUDIO IN TRIG, AUDIO IN L plays T11 and R plays T12 |
 | 0025 | none | PERF pads push their track: filter closes, res/delay/reverb up, a random slow LFO |
 | 0022 | none | the delay's longest time is 5.33 s (was 8 s), freeing 2 MB of RAM for new effects and machines |
 | 0021 | SYNTH page, machine DG SINE, DG SAW, DG PULSE, DG FM2 or DG ORGAN | new digital machines, chromatically tuned, on every track |
@@ -409,6 +409,33 @@ does. There is nothing to set up, and no page for it.
   other). If that happens, say so: it has not been seen on this build yet.
 - Whether the notes are recorded in live recording or sent out on MIDI follows
   what stock does for Overbridge notes; not checked.
+
+### AUDIO IN as trigger inputs
+
+**SETTINGS > AUDIO ROUTING > AUDIO IN** (the last item) switches the two audio
+inputs between sampling and triggering. It is device-wide and kept over power-off.
+
+- **SAMPLE** (the default): the inputs are stock's, for sampling and the mix.
+- **TRIG**: **AUDIO IN L plays T11**, **AUDIO IN R plays T12**, as CTRL IN does
+  (one trig per gate, 50 ms note, velocity 127).
+- **TRIG INV**: the same, on the signal's negative swing.
+
+The audio inputs are AC-coupled, so a gate does not arrive as a steady level.
+It arrives as a spike at its rising edge and an opposite spike at its falling
+edge. TRIG plays on positive spikes and TRIG INV on negative ones. **If the
+track plays at the end of each gate instead of its start, switch to the other
+one.** Short triggers (a few ms) and drum hits work in either mode.
+
+- The trig level is 12% of the input's full scale (about -18 dBFS), and the input
+  must fall below 4% before the next trig. Modular gates are far above that; turn
+  a line source up until it plays.
+- The inputs still feed the mix and the effects at TRIG: turn the input's level
+  down if you don't want to hear the gates.
+- Sampling still records whatever comes in, at any setting.
+- AUDIO IN triggers land about 0.7 ms later than CTRL IN ones.
+- Eurorack levels (5..10 V) are much hotter than line level. They clip the
+  input, which is harmless for triggers, but check that your source and the
+  input can take it, or use an attenuator.
 
 ## 0024 - Lean interrupt
 

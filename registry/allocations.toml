@@ -2105,11 +2105,12 @@ size   = 6
 expect = "2f0a2f024282"
 entry  = "pnc_entry"
 
-# cave24, all of it: the AUDIO ROUTING item (DIST FILTER), UI code only.
+# cave24's first 0x1e0 (it uses 472 B): the AUDIO ROUTING item (DIST FILTER), UI
+# code only. The rest is 0020's AUDIO IN item.
 [[cave]]
 owner   = "0019-reverb-srr"
 addr    = 0x401ba97e
-size    = 0x2f2
+size    = 0x1e0
 section = ".dfm"
 note    = "The DIST FILTER item in AUDIO ROUTING: its list hook, label, drawer, changer and std::function manager."
 
@@ -2337,7 +2338,7 @@ from_symbol = "txt_phs_short"
 owner = "0020-cv-trig"
 addr  = 0x40135f46
 size  = 0x370
-note  = "All of cave19 (more than it needs now): the CTRL IN gate detection, the MIDI task's note player and the gate and edge state written at run time."
+note  = "All of cave19: the CTRL IN and AUDIO IN gate detection, the AUDIO IN setting and its drawer, the MIDI task's note player and the gate and edge state written at run time."
 
 # The audio interrupt, right after adc_pedal_update returns: `lea 0x800067de,%a4`,
 # re-emitted, rejoining at 0x40120ea4. As 0017.
@@ -2358,6 +2359,42 @@ addr   = 0x40082d12
 size   = 6
 expect = "4879418fd874"
 entry  = "cvt_task"
+
+# cave24's tail, after 0019's DIST FILTER item: the AUDIO IN item in AUDIO ROUTING
+# (its list hook, label, changer and std::function manager). UI code only.
+[[cave]]
+owner   = "0020-cv-trig"
+addr    = 0x401bab5e
+size    = 0x112
+section = ".aim"
+note    = "The AUDIO IN item (SAMPLE / TRIG / TRIG INV) in AUDIO ROUTING."
+
+# cave11's free tail (0x40027334..0x4002738d): the AUDIO IN item's changer and its
+# std::function manager. UI code only.
+[[cave]]
+owner   = "0020-cv-trig"
+addr    = 0x40027334
+size    = 0x5a
+section = ".aic"
+note    = "The AUDIO IN item's changer and manager."
+
+# AudioRoutingMenuView's item list (0x400d8cb6), its epilogue: `moveml
+# %sp@(36),%d2-%d7/%a2-%fp`, just after the view's vtable +28 call that ends the
+# list. The stub appends AUDIO IN after every other item, makes the +28 call again
+# and re-emits the epilogue (moveml, `lea %sp@(144),%sp`, rts); it does not rejoin.
+# The function has one exit; nothing branches into 0x400d902d..0x400d9031.
+[[detour]]
+owner  = "0020-cv-trig"
+addr   = 0x400d902c
+size   = 6
+expect = "4cef7cfc0024"
+entry  = "ain_menu"
+rejoin = "none"             # re-emits the whole epilogue and returns
+
+# Its device-wide setting lives outside the image, in the persisted gap at
+# 0x405c8ea0..0x405c8ea7 (tag AINT, version, AUDIO IN mode, spare), clear of 0019's
+# DSTF record (0x405c8e90..0x405c8e9b) and 0017's (0x405c8e84..0x405c8e8b). RAM, so
+# no claim here; recorded so the next user of the gap sees it taken.
 
 # ---------------------------------------------------------------------- cave25
 

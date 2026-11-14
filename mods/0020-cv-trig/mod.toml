@@ -1,6 +1,6 @@
 [mod]
 id      = "0020-cv-trig"
-title   = "CTRL IN triggers a track"
+title   = "CTRL IN and AUDIO IN trigger tracks"
 
 enabled = true
 
@@ -11,22 +11,32 @@ excludes = ["0017-ctrl-in-perf", "0011-batch-probe"]
 status  = "built"
 
 summary = """
-Fixed, no settings: a gate into CTRL IN 1 plays T1 (pad 1, BD), into CTRL IN 2
+CTRL IN: fixed, no settings. A gate into CTRL IN 1 plays T1 (pad 1, BD), into CTRL IN 2
 T2 (pad 2, SD), in any CONTROL INPUT mode, OFF included (2026-11-13: a version
 that left ports in mode OFF alone played nothing on the unit, whose ports were
 OFF). Both ports' thresholds come from CTRL IN 1's millivolt conversion: with
-CTRL IN 2's own, a gate into it never played its track on the unit. Note
-60 (the track's own pitch) at velocity 127, once: one gate is one trig. The
-note-off follows len_ms later whatever the gate's length; falling below 0.5 V
-only re-arms the port, and for 2 ms after a trig the port is not read, so a
-bouncing edge cannot trig twice. (Until 2026-11-13 the gate's length was the
-note's: a long gate, or a sound holding until note-off, played on.) The input
-is read signed, as adc_pedal_update reads it. At power-up each port must fall
-below 0.5 V before its first trig and is not read for 170 ms (on the unit T1
-played once at every start-up before, 2026-11-13). The thresholds are turned into each port's raw
-units by stock's millivolt conversion (0x4013f3fa), as its CV levels are.
-Stock's CONTROL IN MOD routes keep working on the same port. (The TRIG DEST menu
-item is removed.)
+CTRL IN 2's own, a gate into it never played its track on the unit.
+
+AUDIO IN (2026-11-14): SETTINGS > AUDIO ROUTING > AUDIO IN, device-wide, saved
+with the device's settings (gap 0x405c8ea0, tag AINT): SAMPLE (default) leaves
+the inputs alone; TRIG plays T11 from AUDIO IN L and T12 from AUDIO IN R on a
+positive spike above ain_on % of full scale, re-armed below ain_off %; TRIG INV
+the same on negative spikes. The inputs are AC-coupled: a gate arrives as a
+spike at each edge, its own polarity at the start and the other at the end, so
+one of TRIG / TRIG INV plays at the gate's start and the other at its end. The
+input still sounds through the mixer at TRIG: turn its level down there. Read
+from the receive buffer (words 10, 11, every 4th frame), so the block before:
+0.67 ms later than CTRL IN. With 0023's meter built in, word 10 is the meter's,
+so AUDIO IN L at TRIG plays nonsense then.
+
+All ports: note 60 (the track's own pitch) at velocity 127, once: one gate is
+one trig. The note-off follows len_ms later whatever the gate's length; falling
+below the off level only re-arms the port, and for 2 ms after a trig the port is
+not read, so a bouncing edge cannot trig twice. At power-up each port must fall
+below its off level before its first trig and is not read for 170 ms. CTRL IN
+thresholds are turned into each port's raw units by stock's millivolt conversion
+(0x4013f3fa), as its CV levels are. Stock's CONTROL IN MOD routes keep working on
+the same port.
 
 The edges are found in the audio interrupt just after adc_pedal_update
 (0x40120e9e, every 0.67 ms) on the raw converter result, not the smoothed value,
@@ -43,6 +53,10 @@ stub = "stub.s"
 # The note's length in ms: how long after a trig its note-off is sent. 50 ms is
 # about a 1/16 at 75 BPM; sounds with a finite AMP hold do not hear it.
 len_ms = 50
+# AUDIO IN's gate, in percent of the input's full scale: on above ain_on (12, about
+# -18 dBFS), re-armed below ain_off (4, about -28 dBFS).
+ain_on = 12
+ain_off = 4
 
 [requires]
 shared = false
