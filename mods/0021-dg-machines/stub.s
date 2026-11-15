@@ -128,6 +128,7 @@
         .equ    P_CHD,          8                 | 13 (CHORD)
         .equ    P_INV,          10                | 14
         .equ    P_CDT,          12                | 15
+        .equ    P_TON,          14                | 16 (CHORD; was DRV)
         .equ    P_SDT,          8                 | 13 (SUPER)
         .equ    P_MIX,          10                | 14
         .equ    P_BRT,          8                 | 13 (PLUCK)
@@ -892,7 +893,8 @@ dg_fm2:
         | ----------------------------------------------------------- DG CHORD
         | Four polyBLEP saws on a chord from CHD's table (16 chords), the
         | lowest INV notes raised an octave, DET spreading them up to about
-        | 12 cents. Each saw at a quarter, so the four never clip.
+        | 12 cents. Each saw at a quarter, so the four never clip. Then TON
+        | (chd_tone, .text9), a key-tracked one-pole low-pass, and the level.
 dg_chord:
         DG_ENTRY
         bsr.w   dg_enter
@@ -970,8 +972,8 @@ dg_chord:
         cmpa.l  %d0,%a5
         blt.s   6b
         lea     16(%sp),%sp
-        moveq   #14,%d1                           | DRV
-        bsr.w   dg_drvpass
+        bsr.w   dg_note                           | d3 the root again
+        jsr     chd_tone
         bsr.w   dg_levelpass
         bra.w   dg_exit
 
@@ -1955,6 +1957,106 @@ txt_swp_s:      .asciz  "SWP"
         | (machine 36, hidden), whose dispatch entry is dg_fold's.
         | ==================================================================
         .section .text9,"ax"
+        .align  2
+
+        | ---------------------------------------------------- DG CHORD's TON
+        | chd_tone(d3 the root, 16.16; a2 the state, a3 the params, a4 the
+        | block): TON (sound index 16) 0 leaves the block as it is; 1..127 a
+        | one-pole low-pass (6 dB an octave, no resonance) whose corner
+        | follows the root: about 61 times its frequency at 1, the root
+        | itself at 111, half of it at 127, in 1/16-octave steps. A softer
+        | slope than the analog LP2, so the saws lose their fizz and keep
+        | their body. a = w / (1 + w), w = 2 pi fc / fs, set once a block.
+        | y lives in ST_SWE biased by 0x10000000 (dg_enter holds that word to
+        | 0..ENV_FULL); the trig's ENV_FULL reads as y = 0. At TON 0, y
+        | follows the block's last sample, so turning TON up mid-note does
+        | not click. The output is y times sqrt(1 + (root / fc)^2), so the
+        | root keeps its level as TON darkens. Clobbers d0..d7, a0, a1.
+        .equ    TON_BIAS,       0x10000000
+chd_tone:
+        move.l  ST_SWE(%a2),%d5
+        cmp.l   #ENV_FULL,%d5
+        bne.s   1f
+        move.l  #TON_BIAS,%d5
+1:      sub.l   #TON_BIAS,%d5                     | y
+        move.w  P_TON(%a3),%d4
+        ext.l   %d4
+        asr.l   #8,%d4
+        bgt.s   2f
+        move.l  (FRAMES - 1) * 4(%a4),%d5         | off
+        bra.w   8f
+2:      move.l  %d3,%d0
+        jsr     dg_inc                            | keeps d2..d7
+        clr.w   %d0
+        swap    %d0                               | f / fs, Q16
+        moveq   #127,%d1
+        sub.l   %d4,%d1
+        mulu.w  #113,%d1
+        lsr.l   #7,%d1                            | e = 0..111, 1/16 octaves
+        move.l  %d1,%d4                           | (TON is no longer needed)
+        moveq   #15,%d2
+        and.l   %d1,%d2
+        lea     ton_frac,%a0
+        mvz.w   (%a0,%d2.l*2),%d2                 | 2^(e % 16 / 16), Q14
+        mulu.l  %d2,%d0
+        moveq   #14,%d2
+        lsr.l   %d2,%d0
+        lsr.l   #4,%d1
+        lsl.l   %d1,%d0                           | 2^(e / 16)
+        lsr.l   #1,%d0                            | an octave down: fc / fs, Q16
+        move.l  #32767,%d6
+        cmp.l   #32768,%d0                        | fc at or past fs / 2: a = 1
+        bcc.s   3f
+        move.l  #25736,%d2                        | 2 pi, Q12
+        mulu.l  %d2,%d0
+        moveq   #12,%d2
+        lsr.l   %d2,%d0                           | w, Q16
+        add.l   #65536,%d0
+        move.l  #0x80000000,%d6
+        divu.l  %d0,%d6                           | 1 / (1 + w), Q15
+        neg.l   %d6
+        add.l   #32768,%d6                        | a = w / (1 + w), Q15
+        cmp.l   #32767,%d6
+        ble.s   3f
+        move.l  #32767,%d6
+3:      lea     ton_gain,%a0
+        mvz.w   (%a0,%d4.l*2),%d4                 | the make-up gain, Q12
+        movea.l %a4,%a0
+        moveq   #15,%d2
+        moveq   #12,%d3
+        moveq   #FRAMES,%d7
+4:      move.l  (%a0),%d0
+        sub.l   %d5,%d0
+        muls.l  %d6,%d0
+        asr.l   %d2,%d0
+        add.l   %d0,%d5                           | y, the filter's state
+        move.l  %d5,%d0
+        muls.l  %d4,%d0
+        asr.l   %d3,%d0
+        move.l  %d0,(%a0)+                        | y times the gain
+        subq.l  #1,%d7
+        bne.s   4b
+8:      add.l   #TON_BIAS,%d5
+        move.l  %d5,ST_SWE(%a2)
+        rts
+
+ton_gain:                                         | sqrt(1 + (2 * 2^(-e/16))^2), Q12:
+                                                  | the root's loss at the corner, made up
+        .word   9159, 8850, 8556, 8278, 8014, 7765, 7529, 7305, 7094, 6895, 6708, 6531
+        .word   6364, 6208, 6060, 5922, 5793, 5671, 5557, 5451, 5352, 5259, 5172, 5092
+        .word   5017, 4947, 4882, 4821, 4765, 4713, 4665, 4621, 4579, 4541, 4506, 4473
+        .word   4443, 4416, 4390, 4366, 4344, 4324, 4306, 4289, 4273, 4259, 4245, 4233
+        .word   4222, 4212, 4202, 4194, 4186, 4178, 4171, 4165, 4160, 4154, 4149, 4145
+        .word   4141, 4137, 4134, 4131, 4128, 4125, 4123, 4121, 4119, 4117, 4115, 4113
+        .word   4112, 4111, 4109, 4108, 4107, 4106, 4106, 4105, 4104, 4103, 4103, 4102
+        .word   4102, 4101, 4101, 4100, 4100, 4100, 4099, 4099, 4099, 4099, 4098, 4098
+        .word   4098, 4098, 4098, 4098, 4097, 4097, 4097, 4097, 4097, 4097, 4097, 4097
+        .word   4097, 4097, 4097, 4097
+ton_frac:                                         | 2^(k / 16), Q14
+        .word   16384, 17109, 17867, 18658, 19484, 20347, 21247, 22188
+        .word   23170, 24196, 25268, 26386, 27554, 28774, 30048, 31379
+txt_ton_l:      .asciz  "Tone"
+txt_ton_s:      .asciz  "TON"
         .align  2
 
         | ------------------------------------------------------------ DG FOLD

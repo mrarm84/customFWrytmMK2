@@ -560,7 +560,7 @@ silent for a few milliseconds while their sine table is built.
   fifth above it (5 1/3 ft), **D4** an octave above. Two drawbars at full reach
   full scale; with more, lower LEV or the drawbars.
 
-**DG CHORD** (TUN FIN CHD DEC / INV DET DRV LEV)
+**DG CHORD** (TUN FIN CHD DEC / INV DET TON LEV)
 
 - Four band-limited saws playing a chord on the note, so one track plays chords.
 - **CHD** 0..15 picks the chord:
@@ -580,7 +580,15 @@ silent for a few milliseconds while their sine table is built.
 - **DET** detunes the four notes against each other, up to about 25 cents, for a
   wider, string-machine sound. 0 is exactly in tune.
 - Each saw is at a quarter, so the chord never clips.
-- **DRV** drives the whole chord into soft clipping; 0 off.
+- **TON** (tone, replaced DRV on 2026-11-15) darkens the chord: 0 is the plain,
+  bright saws; turning it up closes a gentle low-pass (6 dB per octave, no
+  resonance) that follows the note. So a chord sounds equally dark across the
+  keyboard, and the saws lose their fizz but keep their body, unlike the
+  steeper analog LP. Around 40..80 is "warm"; 127 is the corner at half the
+  root, close to a soft triangle-like tone. The level is made up so the root
+  stays as loud: what you lose as it darkens is the treble only.
+  Combine it with the analog filter set wide open, or with a gentle LP or BP
+  on top, for more shape.
 
 **DG SUPER** (TUN FIN DET DEC / MIX SUB DRV LEV)
 

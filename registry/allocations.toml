@@ -4280,7 +4280,7 @@ size    = 4
 expect  = "402373c0"
 from_symbol = "txt_noi_s"
 
-# Record 391: machine 49, sound index 16, DRV: 0..0x7f00, default 0x0 (was RS FM 2's; that machine stays hidden).
+# Record 391: machine 49, sound index 16, TON (was DRV until 2026-11-15): 0..0x7f00, default 0x0 (was RS FM 2's; that machine stays hidden).
 [[patch]]
 owner   = "0021-dg-machines"
 addr    = 0x401c4884
@@ -4293,14 +4293,14 @@ owner   = "0021-dg-machines"
 addr    = 0x401c48ac
 size    = 4
 expect  = "4023777b"
-from_symbol = "txt_drv_l"
+from_symbol = "txt_ton_l"
 
 [[patch]]
 owner   = "0021-dg-machines"
 addr    = 0x401c48b4
 size    = 4
 expect  = "40237785"
-from_symbol = "txt_drv_s"
+from_symbol = "txt_ton_s"
 
 # Record 392: machine 51, sound index 15, DRV: 0..0x7f00, default 0x0 (was RS FM 2's; that machine stays hidden).
 [[patch]]

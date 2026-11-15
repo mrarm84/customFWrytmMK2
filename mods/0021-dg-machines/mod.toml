@@ -98,6 +98,12 @@ ARP cycles chord_tab[ARP - 1] every 6 + (127 - SPD)^2 / 170 blocks; SWP adds
 (SWP - 64) * 67 / 65536 semitones a block, held to +-60. fix_ids moved to .text4
 and the chip's names to .text to fit.
 Hardware 2026-11-12: all nine machines and the filled knobs work.
+2026-11-15: DG CHORD's DRV (record 391, sound index 16) is TON: a one-pole low-pass
+on the summed saws, its corner tracking the root from about 61x (TON 1) to half
+(TON 127) in 1/16 octaves, a = w / (1 + w), with make-up gain sqrt(1 + (root /
+fc)^2) from a table; 0 leaves the samples as they were (identical to DRV 0). The
+state is in ST_SWE biased by 0x10000000; chd_tone and its tables in .text9.
+About 420 instructions a block a voice while TON is on (dgbench, emulator).
 DEC loop: dg_gain (and DG CHIP's level) go through dg_ampdec (.text5): DEC 0..100
 scaled by 1.262 onto dg_decay's 0..126, 101..126 dg_decay at knob 10 + 2(DEC - 101)
 restarting at ENV_FULL below 2^24 (-36 dB), a pulse every 11 ms to ~1 s; 127 holds.
