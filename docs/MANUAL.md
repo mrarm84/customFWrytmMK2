@@ -66,6 +66,8 @@ return to LFO.
 |---|---|---|
 | A | DS1 | modifier 1 destination |
 | B | DS2 | modifier 2 destination |
+| C | SYN | the TRIG page's SYN (lite build) |
+| D | SMP | the TRIG page's SMP (lite build) |
 | E | DP1 | modifier 1 depth |
 | F | DP2 | modifier 2 depth |
 
@@ -102,12 +104,24 @@ the mix about 2.6 ms later than an analog one, and it also passes the DIST filte
 (0019). The reverb and delay sends get the degraded voice. Costs CPU only while
 some track has SRD or BIT on.
 
-**Portamento (lite build).** Knobs C and D of the LFO RND page:
+**SYN and SMP (lite build).** Knobs C and D of the LFO RND page are the TRIG
+page's SYN and SMP, moved here to make room for portamento: the same settings,
+the track's default without a trig held and that step's own switch with one
+held, as on the TRIG page before.
+
+**Portamento (lite build).** Knobs E and F of the TRIG page, where SYN and SMP
+were:
 
 | knob | label | setting |
 |---|---|---|
-| C | GLD | OFF (default) or ON: portamento for this sound |
-| D | TIM | portamento time, 0..127: about 1 ms at 0, 40 ms at 64, 0.25 s at 96, 1.5 s at 127 (time to cover most of the interval; the last fraction of a cent takes longer) |
+| E | GLD | OFF (default) or ON: portamento for this sound |
+| F | TIM | portamento time, 0..127: about 1 ms at 0, 40 ms at 64, 0.25 s at 96, 1.5 s at 127 (time to cover most of the interval; the last fraction of a cent takes longer) |
+
+Both can be locked per step: hold the trig and turn, as for any parameter. A
+locked GLD or TIM plays on that step only; GLD and TIM lock each on its own, so a
+step can lock GLD ON (a slide into that note) and keep the sound's TIM. Clearing
+the lock, copying and pasting the step and saving the pattern work as for stock
+locks.
 
 With GLD ON every note glides from the pitch the voice was last playing, on
 every machine, analog and DG alike. The glide follows the note the trig plays
@@ -121,7 +135,9 @@ RES set in an older build opens with GLD ON or that TIM: set them once.
 **Limitations**
 
 - Voice tracks only; the FX track has no LFO RND.
-- The four settings cannot be p-locked.
+- The four settings cannot be p-locked. With a trig held, turning DS1, DS2, DP1
+  or DP2 does nothing (an earlier lite build wrote a broken lock, shown lit with
+  ERR; clear the locks on such steps once).
 - After the sequencer stops, the last offsets stay applied until the next note.
   You may hear this on ringing notes and on pads.
 - Pads get no randomisation until the pattern has played at least once.

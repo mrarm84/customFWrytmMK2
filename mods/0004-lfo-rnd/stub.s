@@ -23,6 +23,8 @@
         .equ    PARAM_ROM,      0x401bf918        | 0x34-byte ROM parameter records
         .equ    PARAM_ROM_SHORT, 0x30
         .equ    LIST_X,         184               | the list view's x; +188 is its width
+        .equ    ID_SYN,         34                | lite: the TRIG page's SYN and SMP,
+        .equ    ID_SMP,         35                | on this page (snd_route)
 
         .text
 
@@ -702,6 +704,148 @@ audio_gate:
         jmp     lfo_call_resume
         .endif
 
+        | ==================================================================
+        | lite: locks on LFO RND's page, in cave .lck.
+        | ==================================================================
+
+        | ------------------------------------------------------------------
+        | The page views' "can this id be locked" test, vtable +0x6c
+        | (0x4003788a). The trig-held knob turn, its per-step create and
+        | adjust (view vtable +0x70/+0x74/+0x78) and the lock clear all ask it
+        | before they touch a lock; stock answers from the RAM record's flag
+        | 0x100. Ids 1..4 passed it, so a turn with a trig held wrote stock's
+        | raw value as a lock on sound index 0 - the free word these four share
+        | and nothing reads back as a lock - which lit the knob and popped ERR.
+        | They answer no now: with a trig held they do nothing, as any
+        | parameter stock will not lock. Their settings are per sound only.
+        |
+        | 0013's GLD and TIM (ids 457 and 13) answer yes, but only where the
+        | page's set is a TrigParameterSet - the TRIG page - whose lock slots
+        | 0013 handles for them (porta_lget/lset/lclr). No other set knows
+        | them: a sound set would lock container index -1.
+        |
+        | Over `movel %sp@(8),%sp@-` and the first half of `jsr param_info`,
+        | both re-emitted, rejoining at 0x40037894. (sp) return, 4 view, 8 id.
+        | ------------------------------------------------------------------
+        .section .lck,"ax"
+        .equ    LOCKABLE_RESUME, 0x40037894
+        .equ    VT_PAGE_SET,    0xa0              | page view: page_param_set(view, track)
+        .equ    ID_TIM,         13                | 0013's porta ids
+        .equ    ID_GLD,         457
+        .align  2
+lockable_gate:
+        move.l  8(%sp),%d0
+        subq.l  #ID_FIRST,%d0
+        moveq   #3,%d1
+        cmp.l   %d1,%d0
+        bhi.s   1f
+        moveq   #0,%d0                            | DS1, DP1, DS2, DP2: never
+        rts
+1:      move.l  8(%sp),%d0
+        cmp.l   #ID_TIM,%d0
+        beq.s   2f
+        cmp.l   #ID_GLD,%d0
+        bne.s   9f
+2:      move.l  4(%sp),%a0                        | the view
+        pea     -1                                | the selected track's set
+        move.l  %a0,-(%sp)
+        move.l  (%a0),%a0
+        move.l  VT_PAGE_SET(%a0),%a0
+        jsr     (%a0)
+        addq.l  #8,%sp
+        tst.l   %d0
+        beq.s   3f
+        move.l  %d0,%a0
+        move.l  (%a0),%d0                         | its vtable
+        cmp.l   #TRIG_PARAM_SET_VT,%d0
+        bne.s   3f
+        moveq   #1,%d0                            | the TRIG page: yes
+        rts
+3:      moveq   #0,%d0
+        rts
+9:      move.l  8(%sp),-(%sp)                     | displaced
+        jsr     param_info                        | displaced
+        jmp     LOCKABLE_RESUME
+
+        | ------------------------------------------------------------------
+        | SYN and SMP (ids 34 and 35) on this page.
+        |
+        | The page's set is the track's SoundParameterSet, which reads and
+        | writes a sound word by the id's container index. SYN's and SMP's are
+        | the trig container's, so through it they would read and write
+        | unrelated sound words. The SoundParameterSet's slots they reach are
+        | patched to the wrappers below: ids 34 and 35 go on to the
+        | TrigParameterSet's own function, on the trig set of the same track
+        | (param_target_for_track, kind 1 - what the TRIG page itself uses),
+        | every other id to stock's. Every slot takes (set, id, ...):
+        |   +0x24 is the value in range (the popup's value-name test)
+        |   +0x28 read
+        |   +0x2c apply a knob's delta (the turn, and 0014's TRK + turn)
+        |   +0x3c +0x40 +0x44 a step's lock: read, write, clear
+        |   +0x48 a delta on a step's lock
+        | +0x2c and +0x48 call back through the set they are handed, so once
+        | swapped the rest of their work stays on the trig set, its write
+        | included. The trig set holds the track's TRIG page defaults and,
+        | with a trig held, that step's own switch, so the two knobs here and
+        | on the TRIG page are the same settings.
+        | ------------------------------------------------------------------
+        .equ    SET_TRACK,      8                 | SoundParameterSet: its track
+        .equ    KIND_TRIG,      1
+
+        .align  2
+snd_w24:
+        lea     0x400aa440,%a0                    | the sound set's
+        lea     0x400a894e,%a1                    | the trig set's
+        bra.s   snd_route
+snd_w28:
+        lea     0x400a8dfa,%a0                    | read_gate's detour is at its entry
+        lea     0x400a86c0,%a1
+        bra.s   snd_route
+snd_w2c:
+        lea     0x400a95dc,%a0                    | shared by both
+        move.l  %a0,%a1
+        bra.s   snd_route
+snd_w3c:
+        lea     0x400a9848,%a0
+        lea     0x400a89f0,%a1                    | patched by 0013 (porta_lget), the
+        bra.s   snd_route                         | ids there are not these two
+snd_w40:
+        lea     0x400a98ba,%a0
+        lea     0x400a8b26,%a1
+        bra.s   snd_route
+snd_w44:
+        lea     0x400a9956,%a0
+        lea     0x400a8c84,%a1
+        bra.s   snd_route
+snd_w48:
+        lea     0x400a84f4,%a0                    | shared by both
+        move.l  %a0,%a1
+
+        | a0 the sound set's function, a1 the trig set's; (sp) return,
+        | 4(sp) the set, 8(sp) the id.
+snd_route:
+        moveq   #ID_SYN,%d0
+        cmp.l   8(%sp),%d0
+        beq.s   1f
+        moveq   #ID_SMP,%d0
+        cmp.l   8(%sp),%d0
+        beq.s   1f
+        jmp     (%a0)
+1:      move.l  %a1,-(%sp)                        | the trig set's function
+        move.l  8(%sp),%a0                        | the sound set
+        move.l  SET_TRACK(%a0),-(%sp)
+        jsr     project_singleton
+        move.l  (%sp)+,%d1                        | the track
+        pea     KIND_TRIG
+        move.l  %d1,-(%sp)
+        move.l  %d0,-(%sp)
+        jsr     param_target_for_track
+        lea     12(%sp),%sp
+        move.l  %d0,8(%sp)                        | the trig set, in the set's slot
+        move.l  (%sp)+,%a1
+        jmp     (%a1)
+        .text
+
         | ------------------------------------------------------------------
         | Data
         | ------------------------------------------------------------------
@@ -711,7 +855,9 @@ lfo_pages:                                        | the voice LFO view's pages
 
 page_rnd:                                         | {name, top row, bottom row}
         .long   str_page
-        .long   1, 3, 457, 13                     | lite: C GLD, D TIM (0013's)
+        .long   1, 3, ID_SYN, ID_SMP              | lite: C SYN, D SMP (the TRIG page's,
+                                                  | through snd_route); GLD and TIM
+                                                  | moved to the TRIG page (0013)
         .long   2, 4, 5, 12                       | lite: G SRD, H BIT (0013's)
 
         | Destination list: the 8 machine parameters, then sample FIN and STA,

@@ -78,6 +78,21 @@ pitch from that argument, so analog and DG machines alike glide. Stored in 0013'
 POL and RES fields, which lite no longer uses. The stub was run in the emulator
 against the built image (pitch per block, registers kept); not yet on a unit.
 
+**Trig locks (branch `lite-triglock`, 2026-11-17).** GLD and TIM moved to the
+TRIG page (knobs E and F, where SYN and SMP were) and can be locked per step;
+SYN and SMP moved to LFO RND's C and D. The TRIG page's TrigParameterSet only
+knows locks for its own ids, so 0013 patches its lock read/write/clear slots: a
+GLD or TIM lock is one marked word on sound index 0 of the step's locks (the
+sound's free word, 0004's), and a hook in trig_fire, where the step's lock row
+is handed on (0x4009af84), keeps it per track for porta. On LFO RND, SYN and SMP
+reach the track's TrigParameterSet through wrappers in the SoundParameterSet's
+vtable. DS1/DP1/DS2/DP2 are no longer lockable: the page views' lockable test
+(0x4003788a) let them write stock's raw value as a lock on sound index 0, which
+showed lit and read ERR. Three caves from the cavescan surplus (cave36..38). The
+stubs were run in Unicorn against the built image with the stock functions they
+call faked (123 checks: lock encoding, stack and registers, the routing, the
+lockable test, the trig_fire capture and the glide); not yet on a unit.
+
 Not yet run on a unit. The build is the same as below (`make verify`).
 
 ## Lite, 2026-11-13: CV trig, a leaner interrupt, PERF push, the meter

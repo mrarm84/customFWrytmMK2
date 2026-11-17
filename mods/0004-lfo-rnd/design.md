@@ -89,4 +89,9 @@ entry with no mapping of our own.
   unused slot is assumed, not verified.
 
 - FX track support.
-- P-locking the four settings. The delta hook returns before stock creates a lock.
+- P-locking the four settings. The delta hook returns before stock creates a lock,
+  but a turn with a trig held never reaches it: it goes to the page view's lock
+  edit, which asks only the lockable test (view vtable +0x6c, 0x4003788a). Ids 1..4
+  passed it and wrote stock's raw value as a lock on sound index 0, shown lit and
+  read as ERR. lite (2026-11-17): lockable_gate answers no for them, and the lock
+  slot of sound index 0 now carries 0013's GLD/TIM locks from the TRIG page.

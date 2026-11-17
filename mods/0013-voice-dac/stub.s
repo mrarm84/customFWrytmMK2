@@ -3456,7 +3456,54 @@ flt_gain:
         | note's. Every machine takes it, the analog ones and 0021's; sample
         | playback's pitch is its own and does not glide. Keeps all but d0, d1
         | and a0, as at the call.
+        |
+        | lite, TRIG page: GLD and TIM are knobs E and F there, and lockable
+        | (below, PORTAMENTO LOCKS). A lock on the track's last trig
+        | (porta_lock) stands in for the sound's value, each of the two alone.
         | ------------------------------------------------------------------
+
+        | ------------------------------------------------------------------
+        | PORTAMENTO LOCKS (lite), in cave .plk.
+        |
+        | GLD and TIM are knobs E and F of the TRIG page, where SYN and SMP
+        | were (0004 shows those on LFO RND's page instead). The TRIG page's set
+        | is the track's TrigParameterSet, and stock's lock slots there know
+        | only the trig container's ids. Its +0x3c, +0x40 and +0x44 (a step's
+        | lock: read (set, id, step), write (set, id, value, step), clear (set,
+        | id, step)) are patched to porta_lget, porta_lset and porta_lclr, which
+        | take ids 13 and 457 and hand every other id to stock's. The delta on
+        | a lock (+0x48, 0x400a84f4) reads and writes through those two, so it
+        | needs nothing of its own. 0004's lockable_gate lets the two be locked
+        | on the TRIG page only.
+        |
+        | A porta lock is one word on sound index 0 of the step's locks. Index 0
+        | is the sound's free word - 0004's LFO RND settings - which stock never
+        | locks and 0004 never reads as a lock (lockable_gate keeps its ids
+        | from being locked). The word is
+        |   PL_MARK | GLD locked 0x200 | GLD 0x100 | TIM locked 0x80 | TIM
+        | so either can be locked alone; a word without the mark - one an older
+        | build let LFO RND write - is not a porta lock.
+        |
+        | The lock lives in stock's lock array, so it shows on the step as any
+        | lock does, and is copied, cleared and saved with the pattern. It
+        | plays through trig_fire, which hands the step's lock row on; porta_tf
+        | keeps word 0 for porta there.
+        | ------------------------------------------------------------------
+        .equ    PL_MARK,        0x5000
+        .equ    PL_MARKM,       0x7c00
+        .equ    PL_TIM,         0x0080            | TIM locked; TIM in bits 0..6
+        .equ    PL_GLDV,        0x0100            | GLD's value
+        .equ    PL_GLD,         0x0200            | GLD locked
+        .equ    PL_TIM_BIT,     7
+        .equ    PL_GLDV_BIT,    8
+        .equ    PL_GLD_BIT,     9
+        .equ    TSET_TP,        8                 | TrigParameterSet: its TrackPattern
+        .equ    TSET_LOCK_GET,  0x400a89f0        | stock's +0x3c, +0x40, +0x44
+        .equ    TSET_LOCK_SET,  0x400a8b26
+        .equ    TSET_LOCK_CLR,  0x400a8c84
+        .equ    TF_ROW_CALL,    0x4009a8e8
+        .equ    TF_ROW_RESUME,  0x4009af8c
+
         .section .porta,"ax"
         .align  2
 porta:
@@ -3466,7 +3513,20 @@ porta:
         move.l  48(%a0,%d0.l*4),%d3               | shp_track: GLD in bit 8
         move.l  (%a0,%d0.l*4),%d4
         and.l   #0x7f,%d4                         | TIM
-        lea     porta_k,%a0
+        lea     porta_lock,%a0
+        mvs.w   (%a0,%d0.l*2),%d5                 | the trig's porta lock, or -1
+        bmi.s   1f
+        btst    #PL_TIM_BIT,%d5
+        beq.s   3f
+        move.l  %d5,%d4
+        and.l   #0x7f,%d4                         | TIM, locked
+3:      btst    #PL_GLD_BIT,%d5
+        beq.s   1f
+        bclr    #8,%d3
+        btst    #PL_GLDV_BIT,%d5
+        beq.s   1f
+        bset    #8,%d3                            | GLD, locked
+1:      lea     porta_k,%a0
         mvz.w   (%a0,%d4.l*2),%d4                 | k, Q16
         lea     porta_cur,%a0
         move.l  (%a0,%d2.l*4),%d5                 | the voice's pitch last block
@@ -3494,6 +3554,11 @@ porta_cur:                                        | per voice, 16.16 semitones
         .rept   8
         .long   0x80000000
         .endr
+porta_lock:                                       | per voice track: the porta lock
+        .rept   VOICE_TRACKS                      | word of its last trig, -1 for
+        .word   -1                                | none (porta_tf)
+        .endr
+        .align  2
         | k = 1 - exp(-(32 / 48000 s) / (1 ms * 2^(TIM / 12))), Q16
 porta_k:
         .word   31889, 30606, 29350, 28124, 26928, 25764, 24633, 23537
@@ -3650,4 +3715,194 @@ ref_cnt:
         .long   0
 deg_state:                                        | per slot: count, held
         .space  8 * 8
+        .text
+
+        | ------------------------------------------------------------------
+        | PORTAMENTO LOCKS: the lock slots and trig_fire's capture (see porta).
+        | ------------------------------------------------------------------
+        .section .plk,"ax"
+
+        | pl_mask(d0 = id) -> d1 = the id's lock bit, PL_TIM or PL_GLD; 0, and
+        | Z set, for any other id.
+        .align  2
+pl_mask:
+        move.l  #PL_TIM,%d1
+        cmp.l   #ID_RES,%d0
+        beq.s   1f
+        move.l  #PL_GLD,%d1
+        cmp.l   #ID_POL,%d0
+        beq.s   1f
+        moveq   #0,%d1
+1:      tst.l   %d1
+        rts
+
+        | pl_raw(a0 = TrackPattern, d0 = step) -> d0 = the step's porta lock
+        | word, or -1: no lock on sound index 0, or one without the mark.
+        | Clobbers d0/d1/a0/a1.
+        .align  2
+pl_raw:
+        clr.l   -(%sp)                            | flag
+        clr.l   -(%sp)                            | sound index 0
+        move.l  %d0,-(%sp)                        | the step
+        move.l  %a0,-(%sp)
+        jsr     track_lock_get
+        lea     16(%sp),%sp
+        tst.l   %d0
+        bmi.s   8f
+        move.l  %d0,%d1
+        and.l   #PL_MARKM,%d1
+        cmp.l   #PL_MARK,%d1
+        beq.s   9f
+8:      moveq   #-1,%d0
+9:      rts
+
+        | porta_lget(set, id, step) -> the lock in 8.8, or -1 for none, as stock.
+        .align  2
+porta_lget:
+        move.l  8(%sp),%d0
+        bsr.w   pl_mask
+        bne.s   1f
+        jmp     TSET_LOCK_GET
+1:      move.l  %d1,-(%sp)                        | the id's bit; the arguments +4
+        move.l  8(%sp),%a0
+        move.l  TSET_TP(%a0),%a0
+        move.l  16(%sp),%d0
+        bsr.w   pl_raw
+        move.l  (%sp)+,%d1
+        tst.l   %d0
+        bmi.s   9f
+        and.l   %d0,%d1
+        beq.s   8f                                | the other one's lock alone
+        cmp.l   #PL_TIM,%d1
+        bne.s   2f
+        and.l   #0x7f,%d0
+        lsl.l   #8,%d0                            | TIM
+        rts
+2:      and.l   #PL_GLDV,%d0                      | GLD: 0, or 1 << 8
+        rts
+8:      moveq   #-1,%d0
+9:      rts
+
+        | porta_lset(set, id, value, step): the field set and marked locked, the
+        | other kept. TIM is clamped to 0..127; GLD is ON for any value above 0.
+        .align  2
+porta_lset:
+        move.l  8(%sp),%d0
+        bsr.w   pl_mask
+        bne.s   1f
+        jmp     TSET_LOCK_SET
+1:      lea     -12(%sp),%sp
+        movem.l %d2-%d3/%a2,(%sp)                 | set 16, id 20, value 24, step 28
+        move.l  %d1,%d2                           | the id's bit
+        move.l  16(%sp),%a2
+        move.l  TSET_TP(%a2),%a2                  | the TrackPattern
+        move.l  28(%sp),%d0
+        move.l  %a2,%a0
+        bsr.w   pl_raw
+        tst.l   %d0
+        bpl.s   2f
+        move.l  #PL_MARK,%d0                      | the step's first porta lock
+2:      move.l  24(%sp),%d3
+        asr.l   #8,%d3                            | the value, whole
+        cmp.l   #PL_TIM,%d2
+        bne.s   4f
+        tst.l   %d3
+        bpl.s   3f
+        moveq   #0,%d3
+3:      moveq   #127,%d1
+        cmp.l   %d1,%d3
+        ble.s   31f
+        move.l  %d1,%d3
+31:     and.l   #~0x7f,%d0
+        or.l    %d3,%d0
+        bra.s   6f
+4:      and.l   #~PL_GLDV,%d0
+        tst.l   %d3
+        ble.s   6f
+        or.l    #PL_GLDV,%d0
+6:      or.l    %d2,%d0                           | locked
+        clr.l   -(%sp)                            | flag
+        move.l  %d0,-(%sp)                        | the word
+        clr.l   -(%sp)                            | sound index 0
+        move.l  40(%sp),-(%sp)                    | the step
+        move.l  %a2,-(%sp)
+        jsr     track_lock_set
+        lea     20(%sp),%sp
+        movem.l (%sp),%d2-%d3/%a2
+        lea     12(%sp),%sp
+        rts
+
+        .section .plk2,"ax"
+
+        | porta_lclr(set, id, step): the field unlocked; with neither left the
+        | lock on sound index 0 goes, as stock clears one.
+        .align  2
+porta_lclr:
+        move.l  8(%sp),%d0
+        jsr     pl_mask
+        bne.s   1f
+        jmp     TSET_LOCK_CLR
+1:      lea     -8(%sp),%sp
+        movem.l %d2/%a2,(%sp)                     | set 12, id 16, step 20
+        move.l  %d1,%d2
+        move.l  12(%sp),%a2
+        move.l  TSET_TP(%a2),%a2
+        move.l  20(%sp),%d0
+        move.l  %a2,%a0
+        jsr     pl_raw
+        tst.l   %d0
+        bmi.s   9f                                | none: nothing to clear
+        not.l   %d2
+        and.l   %d2,%d0
+        move.l  %d0,%d1
+        and.l   #PL_TIM+PL_GLD,%d1
+        bne.s   5f
+        clr.l   -(%sp)                            | sound index 0
+        move.l  24(%sp),-(%sp)                    | the step
+        move.l  %a2,-(%sp)
+        jsr     track_lock_clear
+        lea     12(%sp),%sp
+        bra.s   9f
+5:      clr.l   -(%sp)                            | flag
+        move.l  %d0,-(%sp)                        | the word, the other still locked
+        clr.l   -(%sp)                            | sound index 0
+        move.l  32(%sp),-(%sp)                    | the step
+        move.l  %a2,-(%sp)
+        jsr     track_lock_set
+        lea     20(%sp),%sp
+9:      movem.l (%sp),%d2/%a2
+        addq.l  #8,%sp
+        rts
+
+        | ------------------------------------------------------------------
+        | porta_tf: trig_fire, at the call that hands the step's lock row on
+        | (0x4009af84, `movel %sp@(104),%sp@-; jsr %pc@(0x4009a8e8)`), both
+        | re-emitted - the jsr as an absolute one - rejoining at 0x4009af8c.
+        | Three arguments are pushed already: (sp) a5, 4(sp) the row, the step's
+        | 44 lock words from sound index 0, and 104(sp) is the track. Word 0
+        | is kept for porta when it is a porta lock, -1 otherwise, so a trig
+        | without one plays the sound's GLD and TIM. d0/d1/a0/a1 are not live
+        | here: the call clobbers them and stock reloads each after it.
+        | ------------------------------------------------------------------
+        .align  2
+porta_tf:
+        move.l  104(%sp),%d0
+        moveq   #VOICE_TRACKS,%d1
+        cmp.l   %d1,%d0
+        bcc.s   9f                                | the FX track
+        move.l  4(%sp),%a0
+        mvs.w   (%a0),%d1                         | the row's sound index 0
+        bmi.s   2f
+        move.l  %d1,%a1
+        and.l   #PL_MARKM,%d1
+        cmp.l   #PL_MARK,%d1
+        beq.s   1f
+        moveq   #-1,%d1
+        bra.s   2f
+1:      move.l  %a1,%d1
+2:      lea     porta_lock,%a0
+        move.w  %d1,(%a0,%d0.l*2)
+9:      move.l  104(%sp),-(%sp)                   | displaced
+        jsr     TF_ROW_CALL                       | displaced
+        jmp     TF_ROW_RESUME
         .text

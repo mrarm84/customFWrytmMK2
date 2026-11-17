@@ -869,6 +869,78 @@ gate   = "dest_list"
 expect = "4fefffd848d704fc"
 entry  = "setter_gate"
 
+# lite: locks on LFO RND's page. A cave from `make cavescan`, one of the
+# surplus regions the 0x401ba28e pool's note lists as sound on the same
+# evidence (no pointer into it, no operand naming it); not yet probed on its own.
+[[cave]]
+owner   = "0004-lfo-rnd"
+addr    = 0x401bb7b0
+size    = 0x14e
+section = ".lck"
+note    = "cave36, lite: the lockable test's gate (DS/DP never, 0013's GLD/TIM on the TRIG page only) and the SoundParameterSet wrappers that send SYN and SMP to the track's TrigParameterSet."
+
+# The page views' lockable test (vtable +0x6c): `movel %sp@(8),%sp@-` and the
+# first half of `jsr param_info`, both re-emitted, rejoining at 0x40037894.
+# Nothing branches into 0x4003788e..0x40037893; the vtables point at the entry.
+[[detour]]
+owner  = "0004-lfo-rnd"
+addr   = 0x4003788a
+size   = 6
+expect = "2f2f00084eb9400ff556"
+entry  = "lockable_gate"
+
+# SoundParameterSet's vtable (0x401dcb74): the slots SYN and SMP reach on LFO
+# RND's page, each to a wrapper that sends ids 34 and 35 to the TrigParameterSet
+# and every other id to the stock function it replaces.
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcb98
+size        = 4
+expect      = "400aa440"   # +0x24 value in range
+from_symbol = "snd_w24"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcb9c
+size        = 4
+expect      = "400a8dfa"   # +0x28 read (read_gate's detour at its entry)
+from_symbol = "snd_w28"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcba0
+size        = 4
+expect      = "400a95dc"   # +0x2c apply delta
+from_symbol = "snd_w2c"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcbb0
+size        = 4
+expect      = "400a9848"   # +0x3c a step's lock: read
+from_symbol = "snd_w3c"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcbb4
+size        = 4
+expect      = "400a98ba"   # +0x40 a step's lock: write
+from_symbol = "snd_w40"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcbb8
+size        = 4
+expect      = "400a9956"   # +0x44 a step's lock: clear
+from_symbol = "snd_w44"
+
+[[patch]]
+owner       = "0004-lfo-rnd"
+addr        = 0x401dcbbc
+size        = 4
+expect      = "400a84f4"   # +0x48 a delta on a step's lock
+from_symbol = "snd_w48"
+
 # Parameter ids 1..4, dead Error records, become the four settings: container
 # index 0 (the sound's free word), range 0..0x7f00, and new names.
 
@@ -1485,7 +1557,77 @@ owner   = "0013-voice-dac"
 addr    = 0x400d3b0c
 size    = 0x1f0
 section = ".porta"
-note    = "lite: porta, its per-voice pitch and the glide table."
+note    = "lite: porta, its per-voice pitch, the per-track porta lock and the glide table."
+
+# lite: portamento locks on the TRIG page. A cave from `make cavescan`, one of the
+# surplus regions the 0x401ba28e pool's note lists as sound on the same evidence;
+# not yet probed on its own.
+[[cave]]
+owner   = "0013-voice-dac"
+addr    = 0x401bcbec
+size    = 0x160
+section = ".plk"
+note    = "cave37, lite: the TrigParameterSet's lock read and write for GLD and TIM (porta_lget, porta_lset) and their helpers."
+
+[[cave]]
+owner   = "0013-voice-dac"
+addr    = 0x401ba59a
+size    = 0x166
+section = ".plk2"
+note    = "cave38, lite: the TrigParameterSet's lock clear for GLD and TIM (porta_lclr) and trig_fire's capture of a step's porta lock (porta_tf)."
+
+# trig_fire's call that hands the step's lock row on: `movel %sp@(104),%sp@-;
+# jsr %pc@(0x4009a8e8)`, rejoining at 0x4009af8c. The move is re-emitted as it
+# is; the jsr is pc-relative, so the stub replays it as `jsr 0x4009a8e8` (absolute,
+# the same target) - hence reemit = false. Nothing branches into
+# 0x4009af86..0x4009af8b.
+[[detour]]
+owner  = "0013-voice-dac"
+addr   = 0x4009af84
+size   = 6
+expect = "2f2f00684ebaf95e"
+entry  = "porta_tf"
+rejoin = 0x4009af8c
+reemit = false
+
+# TrigParameterSet's vtable (0x401dcc6c): a step's lock read, write and clear,
+# for GLD and TIM; every other id goes on to the stock function.
+[[patch]]
+owner       = "0013-voice-dac"
+addr        = 0x401dcca8
+size        = 4
+expect      = "400a89f0"   # +0x3c read
+from_symbol = "porta_lget"
+
+[[patch]]
+owner       = "0013-voice-dac"
+addr        = 0x401dccac
+size        = 4
+expect      = "400a8b26"   # +0x40 write
+from_symbol = "porta_lset"
+
+[[patch]]
+owner       = "0013-voice-dac"
+addr        = 0x401dccb0
+size        = 4
+expect      = "400a8c84"   # +0x44 clear
+from_symbol = "porta_lclr"
+
+# The TRIG page (page_info's table, page 1): knobs E and F, SYN and SMP, become
+# GLD (457) and TIM (13). SYN and SMP are on LFO RND's page (0004).
+[[patch]]
+owner   = "0013-voice-dac"
+addr    = 0x40288474
+size    = 4
+expect  = "00000022"       # E: SYN
+replace = "000001c9"       # GLD
+
+[[patch]]
+owner   = "0013-voice-dac"
+addr    = 0x40288478
+size    = 4
+expect  = "00000023"       # F: SMP
+replace = "0000000d"       # TIM
 
 [[cave]]
 owner   = "0013-voice-dac"
@@ -6128,3 +6270,53 @@ size    = 4
 expect  = "402379a8"
 from_symbol = "txt_sub_s"
 
+
+# ---------------------------------------------------------------------- cave36
+
+[[pool]]
+name   = "cave36"
+start  = 0x401bb7b0
+end    = 0x401bb8fe          # exclusive; 334 B
+stock  = "code"
+expect_sha256 = "e516335990b84238030ebe65d223707161052cd9fad066e10bc5794bdd85f702"
+status = "static"
+note   = """
+Unreachable code by cavescan (0x401bb7b0 +335), one of the regions cave6's note lists
+as surplus and "sound on the same evidence": no 2-aligned long in the image points into
+it and no operand outside it names an address in it. 0x401bb7ae is `rts`. Taken to its
+last whole word. Not probed on hardware on its own. 2026-11-17, for lite's locks on
+LFO RND's page (0004).
+"""
+
+# ---------------------------------------------------------------------- cave37
+
+[[pool]]
+name   = "cave37"
+start  = 0x401bcbec
+end    = 0x401bcd4c          # exclusive; 352 B
+stock  = "code"
+expect_sha256 = "7af45aedf5ac62ec932e2213011e99113290768f4bfda6f136e186a3193a06e6"
+status = "static"
+note   = """
+Unreachable code by cavescan (0x401bcbec +352), listed with cave36 in cave6's note as
+surplus. 0x401bcbea is `rts`; 0x401bcd4c, where it ends, is std_string_from_cstr. No
+pointer into it, no operand naming it. Not probed on hardware on its own. 2026-11-17,
+for lite's portamento locks (0013).
+"""
+
+# ---------------------------------------------------------------------- cave38
+
+[[pool]]
+name   = "cave38"
+start  = 0x401ba59a
+end    = 0x401ba700          # exclusive; 358 B
+stock  = "code"
+expect_sha256 = "3d4df08f7b42924b8d20634cda2a16bf70de0eb3e6b14c030cc17db0509d7811"
+status = "static"
+note   = """
+Unreachable code by cavescan (0x401ba59a +358), after cave6. 0x401ba598 is `rts`;
+0x401ba700, where it ends, is a function's link. No 2-aligned long in the image points
+into it and no operand outside it names an address in it (the nearest, 0x401ba570 and
+0x401ba584, are before it). Not probed on hardware. 2026-11-17, for lite's
+portamento locks (0013).
+"""

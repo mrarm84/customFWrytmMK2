@@ -1533,6 +1533,29 @@ sig = "bool(TrackPattern *, int step, int soundIndex, int value, char flag)"
 status = "verified"
 note = "Sets one step's lock, value as stored (8.8), refusing a step past the track length. Stock passes flag = the parameter record's long at +0x0e being non-zero (0x400071a6). Calls lock_pool_set with the pool at +44 and the track index at +64."
 
+[fn.track_lock_get]
+addr = 0x400bfb52
+sig = "int(TrackPattern *, int step, int soundIndex, char flag)"
+status = "verified"
+note = "One step's lock, sign-extended, -1 for none (or no pool, or a track below 0). Calls lock_pool_get 0x400ac51c with the pool at +44 and the track index at +64; that refuses a track above 12, a step above 63 and a sound index above 41."
+
+[fn.track_lock_clear]
+addr = 0x400c0576
+sig = "bool(TrackPattern *, int step, int soundIndex)"
+status = "verified"
+note = "Removes one step's lock, refusing a step past the track length: lock_pool_clear 0x400ac740(pool +44, track +64, step, soundIndex). SoundParameterSet's lock clear (vtable +0x44) tail-jumps here."
+
+[fn.page_param_lockable]
+addr = 0x4003788a
+sig = "bool(View *this, int id)"
+status = "verified"
+note = "Page view vtable +0x6c: true unless param_info(id)'s flags (+0) have 0x100. Every lock edit asks it first: the trig-held turn (vtable +0x7c, 0x400385f8), its per-held-step create and adjust (vtable +0x70 read 0x40037676, +0x74 write 0x40037e9e, +0x78 delta 0x40038004) and the clear (+0xa8). Each of those then goes through the page's ParameterSet (page_param_set): +0x3c read(set, id, step), +0x40 write(set, id, value, step), +0x44 clear(set, id, step), +0x48 delta(set, id, delta, step). The TrigParameterSet's three know only ids 29..37 (NOT..LFO, PRB not among them). Mod 0004 detours it (lite)."
+
+[data.trig_fire_lock_row_call]
+addr = 0x4009af84
+status = "verified"
+note = "trig_fire's call that hands the step's lock row on: `movel %sp@(104),%sp@-; jsr %pc@(0x4009a8e8)`, the row (pattern copy + 11921 + track * 5674 + step * 88, the step's 44 lock words from sound index 0) already pushed at 4(%sp) and the track at 104(%sp). Reached on every path that plays the trig. The sequencer's pattern copy is 13 x 917 track bytes, then 13 x 5674 lock bytes, per 85760-byte context at 0x407dd8e3. Mod 0013 detours it (lite: porta_tf)."
+
 [fn.lock_pool_set]
 addr = 0x400ac670
 sig = "bool(LockPool *, int track, int step, int soundIndex, int value, char flag)"
