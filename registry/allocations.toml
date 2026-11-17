@@ -879,25 +879,6 @@ size    = 0x14e
 section = ".lck"
 note    = "cave36, lite: the lockable test's gate (DS/DP never, 0013's GLD/TIM on the TRIG page only) and the SoundParameterSet wrappers that send SYN and SMP to the track's TrigParameterSet."
 
-# lite: SYN and SMP default ON. trig_fire takes a step's synth and sample switches
-# (trig word bits 7, 8) from the step where it has its own (explicit bits 11, 12)
-# and otherwise from the track's TRIG page defaults (+707), setting or clearing
-# the bit. The clears become sets, so the track default is always ON; a step's
-# own switch - and so a trigless lock trig, stored as explicit OFF - is kept.
-[[patch]]
-owner   = "0004-lfo-rnd"
-addr    = 0x4009ac3a
-size    = 4
-expect  = "08820007"       # bclr #7,%d2: SYN default OFF
-replace = "08c20007"       # bset #7,%d2
-
-[[patch]]
-owner   = "0004-lfo-rnd"
-addr    = 0x4009ac5c
-size    = 4
-expect  = "08820008"       # bclr #8,%d2: SMP default OFF
-replace = "08c20008"       # bset #8,%d2
-
 # The page views' lockable test (vtable +0x6c): `movel %sp@(8),%sp@-` and the
 # first half of `jsr param_info`, both re-emitted, rejoining at 0x40037894.
 # Nothing branches into 0x4003788e..0x40037893; the vtables point at the entry.

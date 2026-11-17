@@ -105,11 +105,9 @@ the mix about 2.6 ms later than an analog one, and it also passes the DIST filte
 some track has SRD or BIT on.
 
 **SYN and SMP (lite build).** Knobs C and D of the LFO RND page are the TRIG
-page's SYN and SMP, moved here to make room for portamento. The track's default
-is always ON: every trig plays the synth and the sample (turn the sample's LEV
-to 0 for none), in new and existing patterns, whatever the knob shows without a
-trig held. With a trig held the knobs still set that step's own switch, as on
-the TRIG page before, and a step's own switch is kept.
+page's SYN and SMP, moved here to make room for portamento: the same settings,
+the track's default without a trig held and that step's own switch with one
+held, as on the TRIG page before.
 
 **Portamento (lite build).** Knobs E and F of the TRIG page, where SYN and SMP
 were:
