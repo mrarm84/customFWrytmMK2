@@ -20,6 +20,78 @@ mods for the Elektron Analog Rytm MKII, OS 1.73.
   changes have not been run on a unit.
 
 
+## How to build
+
+On Linux, or Windows through WSL (Ubuntu); macOS works too.
+
+1. Install the tools:
+
+       sudo apt install python3 python3-venv git make gcc binutils-m68k-linux-gnu
+       # or a m68k-elf toolchain providing m68k-elf-as, -ld, -objcopy, -objdump
+       # (macOS: brew install m68k-elf-binutils)
+
+   The build calls `m68k-elf-as` and friends; with Ubuntu's
+   `binutils-m68k-linux-gnu`, link each `m68k-linux-gnu-*` tool to the
+   `m68k-elf-*` name on your PATH.
+2. Get the stock firmware: download **Analog Rytm MKII OS 1.73** from Elektron's
+   support site and save it as `stock/Analog-Rytm_MKII_OS1.73.syx`. It is not in
+   this repository; the build checks it against `stock/SHA256SUMS` and refuses
+   any other file.
+3. Build and check:
+
+       make setup     # once: Python venv, the pinned firmware container tool
+       make verify    # build every enabled mod, then verify the image
+
+4. The result is `build/Analog-Rytm_MKII_OS1.73_<mods>.syx`, `<mods>` the numbers
+   of the mods in it. Send it to the Rytm as an OS update over USB (Elektron
+   Transfer or any SysEx tool), as `docs/FLASHING.md` describes. Keep the stock
+   `.syx` to go back.
+
+Only some mods: `.venv/bin/python tools/build.py --mods 0000-shared 0028-live-slot`
+(0000 is needed by most). A mod is in the default build when its `mod.toml` says
+`enabled = true`.
+
+## The mods
+
+A **mod** is one change to the stock OS, in its own folder under `mods/`: a
+manifest (`mod.toml`), the patch source (`stub.s`) and a README. Every address
+it changes is claimed in `registry/allocations.toml`. They group as:
+
+**Features: things you use on the device** (how: `docs/MANUAL.md`)
+
+| mod | what |
+|---|---|
+| 0002 euclid-accents | the euclidean generator places accents on your trigs |
+| 0004 lfo-rnd | LFO RND page: two random modifiers per sound; SYN and SMP |
+| 0010 kit-ab | NO + PLAY flips between the edited kit and the saved one |
+| 0013 voice-dac | DAC SUM: voices to MAIN through the DAC; degrade (SRD, BIT); portamento (GLD, TIM) with trig locks |
+| 0014 ctrl-all | TRK + knob turns that parameter on every sound track |
+| 0015 env-reset-amp | ENV RESET restarts the amp envelope on every trig |
+| 0019 reverb-srr | phaser on REVERB, a REVERB 2 page of effects, a filter on DISTORTION |
+| 0020 cv-trig | CTRL IN and AUDIO IN gates play tracks |
+| 0021 dg-machines | new digital machines: DG SINE, SAW, PULSE, FM2, ORGAN, CHORD, SUPER, PLUCK, CHIP |
+| 0025 perf-push | PERF pads push their track: filter, resonance, delay, reverb, a slow LFO |
+| 0028 live-slot | four live loops: tracks 1, 2, 5, 6 record into slots 124..127 and play while recording |
+
+**Engine: no controls, more room or less CPU**
+
+| mod | what |
+|---|---|
+| 0000 shared | code and tables the other mods call |
+| 0022 fx-ram | the delay's RAM halved (5.33 s longest), 2 MB freed for 0019 and 0021 |
+| 0024 lean | parameter smoothing at half rate; performance locks and CV modulation out |
+| 0027 sample-skip | the sample layer skips voices that would only make silence |
+
+**Measuring and experiments: off by default**
+
+| mod | what |
+|---|---|
+| 0023 isr-meter | the audio interrupt's load, sent over USB for `tools/isr_meter.py` |
+| 0026 cache | data cache over SDRAM: retracted |
+
+Status, from each `mod.toml`: `hardware-verified` (run on a unit), `built`
+(builds and verifies, often emulator-tested, not yet run on a unit), `retracted`.
+
 **Branch `lite` of rytm2_second.** The whole of rytm-mods-src as of 2026-11-13
 (2c6040a and its uncommitted working tree), with mod 0021's DG machines
 rewritten to cost far less of the audio interrupt. Same nine machines, same
