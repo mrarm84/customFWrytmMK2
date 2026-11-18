@@ -1,6 +1,25 @@
 
 # rytm-mods (lite)
 
+**Repository:** <https://github.com/mrarm84/customFWrytmMK2>. Custom firmware
+mods for the Elektron Analog Rytm MKII, OS 1.73.
+
+- **Based on** MrScruff's rytm-mods, redistributed with permission (see
+  "rytm-mods" below). This tree adds the lite line: CPU-light DG machines, DAC
+  SUM only, CV trig, a leaner interrupt, PERF push, portamento with trig locks,
+  and the live loops (0028).
+- **`main` is branch `lite-live`**, the latest build line. Each commit
+  builds an image of its own.
+- **No firmware is included**, neither Elektron's stock OS nor any build made
+  from it: every build contains the stock image. To build, download OS 1.73 from
+  Elektron, put it at `stock/Analog-Rytm_MKII_OS1.73.syx` (checked against
+  `stock/SHA256SUMS`) and run the build below.
+- **Each mod** is a folder under `mods/` with its own README; how to use them
+  on the device is in `docs/MANUAL.md`. Read `docs/HAZARDS.md` and
+  `docs/FLASHING.md` before flashing. Use at your own risk: most of the lite
+  changes have not been run on a unit.
+
+
 **Branch `lite` of rytm2_second.** The whole of rytm-mods-src as of 2026-11-13
 (2c6040a and its uncommitted working tree), with mod 0021's DG machines
 rewritten to cost far less of the audio interrupt. Same nine machines, same
