@@ -70,8 +70,8 @@ G and H (SRD downsample, BIT bit depth), per sound, in 0013's FRQ and DEP fields
 with DAC SUM off only degraded tracks' voices leave the analog bus. The idle
 tick refreshes the per-track values every fourth tick.
 
-**Portamento.** GLD (OFF/ON, default OFF) and TIM on LFO RND's page (0004,
-knobs C and D), per sound. A detour at the audio interrupt's machine call
+**Portamento.** GLD (OFF/ON, default OFF) and TIM, per sound; first on LFO RND's
+page (0004, knobs C and D), now on the TRIG page (see Trig locks below). A detour at the audio interrupt's machine call
 (0x401211ce) glides each voice's pitch argument toward the played note,
 exponentially in semitones, tau = 1 ms * 2^(TIM / 12); every machine takes its
 pitch from that argument, so analog and DG machines alike glide. Stored in 0013's
@@ -94,6 +94,50 @@ call faked (123 checks: lock encoding, stack and registers, the routing, the
 lockable test, the trig_fire capture and the glide); not yet on a unit.
 
 Not yet run on a unit. The build is the same as below (`make verify`).
+
+## Changes, 2026-11-17 and 18: trig locks and live loops
+
+Two branches on top of the lite line (e66ea74), each commit with a build of its own.
+
+**`lite-triglock`: portamento you can lock.**
+
+- GLD and TIM are on the TRIG page, knobs E and F, and lock per step: hold a
+  trig and turn. A locked GLD ON slides into that step's note only.
+- SYN and SMP moved to LFO RND's knobs C and D, the same settings as before:
+  the track's default, or a held trig's own switch. New patterns start with both
+  ON, as stock.
+- LFO RND's DS1, DS2, DP1 and DP2 can no longer be locked. Holding a trig and
+  turning them used to write a broken lock, shown lit with ERR; clear such locks
+  once.
+- Details in the Trig locks paragraph above and in `docs/MANUAL.md` (0004, 0013).
+
+**`lite-live`: four live loops (mod 0028).**
+
+- Tracks 1, 2, 5 and 6 (BD, SD, BT, LT; one voice each, so all four play at once)
+  are loopers on sample slots 124, 125, 126 and 127.
+- Select the track and record with the stock recorder from any screen: SAMPLING
+  + YES arms, starts and stops; SAMPLING + NO discards. SRC, THR and RLEN are the
+  recorder's.
+- The slot plays the take a few milliseconds after it starts, while it is still
+  being written. STA, END and LOOP span the whole RLEN, so STA locks slice it, as
+  on an Octatrack's pickup machine.
+- The recorder's 33 s buffer is split in four: 8.25 s a loop (4 bars at 116 BPM
+  or faster). Loop takes are not normalized; nothing is copied, about 40
+  instructions a block.
+- Not saved: power off and the loops are gone. A take on any other track records
+  as stock, into the whole buffer, over the loops' audio.
+- How: the stock recorder (0x4013f56c), its state (0x419f0330) and the sample
+  slot table (0x41329e70, 16 bytes a slot) are traced in `re/symbols.toml`; the
+  stub's header (`mods/0028-live-slot/stub.s`) lists each detour.
+
+Both were checked in Unicorn against the built image, with the stock functions
+they call faked: 123 checks for the trig locks, 42 for the loops. Neither has
+been run on a unit.
+
+**Each mod folder has a README** (`mods/NNNN-slug/README.md`) for browsing on
+GitHub: status, what it does, how to use it, its files. They are generated from
+`mod.toml` and `docs/MANUAL.md` by `python3 tools/mod_readmes.py`; rerun it after
+editing either.
 
 ## Lite, 2026-11-13: CV trig, a leaner interrupt, PERF push, the meter
 
@@ -253,24 +297,31 @@ byte-identical to stock, so a mistake can only ever reach MAIN OS.
 
 ## Mods
 
-On `robust-live` the default build enables 0000, 0002, 0004, 0010, 0013, 0014,
-0015, 0019, 0020, 0021 and 0022. Retracted mods and one-off hardware
-probes are not part of this package; the pool notes in `registry/allocations.toml`
-still record what those probes established.
+On `lite-live` the default build enables 0000, 0002, 0004, 0010, 0013, 0014,
+0015, 0019, 0020, 0021, 0022, 0024, 0025, 0027 and 0028. 0023 and 0026 are
+measuring builds, off by default. Retracted mods and one-off hardware probes are
+not part of this package; the pool notes in `registry/allocations.toml` still
+record what those probes established. Each mod's folder has a README.
 
 | id | title | status |
 |---|---|---|
 | 0000 | The shared runtime other mods call into | built |
 | 0002 | Euclidean generator places accents instead of trigs | hardware-verified |
-| 0004 | Two per-sound random modifiers on a second LFO page | built |
+| 0004 | Two per-sound random modifiers on a second LFO page (lite: SYN and SMP on it too) | built |
 | 0010 | NO + PLAY toggles between the edited kit and the saved one | hardware-verified |
-| 0013 | Voices to MAIN through the DAC, with a per-sound filter | hardware-verified |
+| 0013 | Voices to MAIN through the DAC (lite: DAC SUM only, degrade, portamento and its trig locks) | hardware-verified; the lite changes are not |
 | 0014 | CTRL ALL: TRK + knob turns that parameter on every sound track | hardware-verified |
 | 0015 | ENV RESET reaches AMP and AMP+FILT | hardware-verified |
-| 0019 | SRR on the REVERB page with knob-press modes; DIST filter | built |
-| 0020 | A gate into CTRL IN plays a track | built |
-| 0021 | New digital machines in the hidden slots: DG SINE, SAW, PULSE, FM2, ORGAN, CHORD, SUPER, PLUCK, CHIP (lite: the CPU-light rewrite) | built |
+| 0019 | Phaser on the REVERB page, REVERB 2, DIST filter | built |
+| 0020 | CTRL IN and AUDIO IN trigger tracks | built |
+| 0021 | New digital machines in the hidden slots (lite: the CPU-light rewrite) | built |
 | 0022 | Delay ring halved to 2 MB, freeing 2 MB of RAM | built |
+| 0023 | Audio interrupt load meter over USB (off by default) | built |
+| 0024 | Lean interrupt: smoothing at half rate; perf locks and CV modulation out | built |
+| 0025 | PERF pads push their track | built |
+| 0026 | Data cache over the uncached SDRAM (off) | retracted |
+| 0027 | The sample layer skips voices that would only make silence | built |
+| 0028 | Live loops: tracks 1, 2, 5 and 6 record into slots 124..127 and play while recording | built |
 
 Status ladder: `re-only` -> `built` -> `hardware-verified`, plus `retracted`.
 Only `hardware-verified` counts.
@@ -284,7 +335,8 @@ Only `hardware-verified` counts.
    regions of the image and can never merge, so anything larger than the biggest
    free run has to be split, and the split belongs in the registry rather than
    being implied by sizes.
-3. Write `mods/NNNN-slug/{mod.toml,stub.s,design.md}`.
+3. Write `mods/NNNN-slug/{mod.toml,stub.s,design.md}`, then run
+   `python3 tools/mod_readmes.py` for its README.
 4. `make verify`, then flash that mod alone.
 
 The `expect` bytes are the load-bearing guard: if an address is wrong or two mods
