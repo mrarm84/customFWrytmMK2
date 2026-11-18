@@ -22,7 +22,7 @@ The default image is
 | 0025 | none | PERF pads push their track: filter closes, res/delay/reverb up, a random slow LFO |
 | 0022 | none | the delay's longest time is 5.33 s (was 8 s), freeing 2 MB of RAM for new effects and machines |
 | 0021 | SYNTH page, machine DG SINE, DG SAW, DG PULSE, DG FM2 or DG ORGAN | new digital machines, chromatically tuned, on every track |
-| 0028 | SAMPLING + YES; sample slot 127 | record from any screen; slot 127 plays the recording while it records |
+| 0028 | SAMPLING + YES on track 1, 2, 5 or 6 | four live loops: each track records into its own slot (124..127) and plays it while it records |
 
 0000 is the shared code the others call into. It has no controls.
 
@@ -678,13 +678,22 @@ machines that need RAM (a chorus, wavetables, plucked strings) have 2 MB to use.
   more (a long TIME at a slow tempo, up to 8 s on stock) hold at 5.33 s.
 - Not yet run on hardware: check long delays and ping-pong at slow tempos.
 
-## 0028 - LIVE slot
+## 0028 - Live loops
 
-Sample slot 127 plays whatever the stock recorder records, from a few
-milliseconds after the recording starts. Nothing is copied or saved: the slot
-reads the recorder's own buffer, as the recorder's preview does.
+Four tracks are loopers: each records into a sample slot of its own and plays it
+from a few milliseconds after the recording starts. Nothing is copied or saved:
+each slot reads its part of the recorder's buffer.
 
-**Record.** From any screen, hold SAMPLING:
+| track | slot |
+|---|---|
+| 1 (BD) | 124 |
+| 2 (SD) | 125 |
+| 5 (BT) | 126 |
+| 6 (LT) | 127 |
+
+The four have a voice each, so all four loops play at once.
+
+**Record.** Select the loop track, then, from any screen, hold SAMPLING:
 
 | keys | recorder | then |
 |---|---|---|
@@ -695,30 +704,32 @@ reads the recorder's own buffer, as the recorder's preview does.
 
 Source, threshold and length are the recorder's own: SRC, THR and RLEN on the
 SAMPLING screen. RLEN in steps (1 to 128, at the current tempo) stops the
-recording by itself; past RLEN 128 it runs to the buffer's end, 33 s.
+recording by itself; a loop is at most 8.25 s (4 bars at 116 BPM or faster), and
+stops there.
 
-**Play.** Set a track's sample machine (SAMPLE page, SMP) to slot 127. Trigs
-play the recording:
+**Play.** Set the loop track's sample machine (SAMPLE page, SMP) to its slot and
+place trigs. A trig plays the loop:
 
 - while recording, the slot is RLEN long, so STA, END and LOOP span the whole
-  length to come and STA locks slice it, a trig playing what has arrived;
+  loop to come and STA locks slice it, a trig playing what has arrived;
 - once the recording stops, the slot is as long as what was recorded;
-- every new recording replaces it, so the pattern plays each new take.
+- every new take on that track replaces its loop; the other three stay.
+
+The loop keeps the input's level (stock normalizes a recording; a loop take is
+not normalized).
 
 **Limits.**
 
-- Slot 127 is the live slot: from the first recording on, its own sample is
-  not heard until a project or sample reload, and the next recording takes it
-  back.
-- Not saved. Power off, or a project or sample reload, and it is gone; save it
-  from the SAMPLING screen as stock if you want to keep it.
+- Slots 124..127 are the loops': from a track's first take on, that slot's own
+  sample is not heard. A project or sample reload keeps the loops.
+- Not saved: power off and they are gone. The SAMPLING screen's save works for
+  takes made on other tracks only.
+- A take on any other track records as stock, into the whole buffer, and
+  overwrites the loops' audio.
 - Played faster than it records (TUN up), or from ahead of the recording (STA),
-  the playback reaches audio not yet recorded and plays what the previous
-  recording left there.
+  a loop reaches audio not yet recorded and plays what was there before.
 - Mono, as the stock recorder.
-- Not yet run on a unit: whether SAMPLING + YES works on every screen, and what
-  the SAMPLING screen shows after a recording made outside it, are to be
-  checked.
+- Not yet run on a unit.
 
 ## Returning to stock
 

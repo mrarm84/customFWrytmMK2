@@ -5515,13 +5515,13 @@ new machine in the span. Not proven on hardware, as cave25.
 
 # ---------------------------------------------------------- 0028-live-slot
 
-# In cave16's free tail, after 0023's word packer: live_rec, slot 127's table
-# entry then the recorder's epilogue.
+# All of cave2's free tail, which 0023 (a measuring build, off by default)
+# takes too: 0028 excludes it.
 [[cave]]
 owner = "0028-live-slot"
-addr  = 0x400b21d4
-size  = 0x56
-note  = "cave16's last 86 B, after 0023's packer: slot 127's entry and the recorder's epilogue (live_rec)."
+addr  = 0x402cdddc
+size  = 0x198
+note  = "cave2's tail (406 of its 548 B): the loop region's selection, the recorder's write, limits and exit, the normalizer gate, and their state (written at run time)."
 
 # The stock recorder's (0x4013f56c, every audio interrupt) single exit, its
 # epilogue: `moveml %sp@,%d2-%d4/%a2; lea %sp@(16),%sp; rts`. The stub re-emits
@@ -5534,6 +5534,67 @@ size   = 6
 expect = "4cd7041c4fef0010"
 entry  = "live_rec"
 rejoin = "none"             # re-emits the epilogue and returns
+
+# The recorder's write in state 2: `addal #0x42adf610,%a1; addil #0x42c62190,%d0`,
+# the two planes' bases, replaced by the take's region's. Nothing branches into
+# 0x4013f82a..0x4013f833.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f828
+size   = 6
+expect = "d3fc42adf610068042c62190"
+entry  = "lv_wr"
+reemit = false
+rejoin = 0x4013f834
+
+# The room left in the buffer: `movel #1584000,%d0`, then minus the count. The
+# region's limit instead.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f800
+size   = 6
+expect = "203c00182b80"
+entry  = "lv_lim1"
+reemit = false
+
+# The full-buffer stop after the block's write: `cmpil #1583999,%d2; bles
+# 0x4013f85a`. The stub compares with the region's limit and branches itself.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f846
+size   = 6
+expect = "0c8200182b7f6f0c"
+entry  = "lv_lim2"
+reemit = false
+rejoin = "none"
+
+# rec_arm and rec_start (UI context): their entries, re-emitted after lv_sel
+# chooses the take's region from the selected track. Nothing branches into
+# 0x4013f87a..0x4013f87f or 0x4013f8a8..0x4013f8ab.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f878
+size   = 6
+expect = "2f0240c146fc2700"
+entry  = "lv_arm"
+rejoin = 0x4013f880
+
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f8a6
+size   = 6
+expect = "2f032f0240c3"
+entry  = "lv_start"
+
+# The finished take's handler (0x400a39e6, from the UI event table at
+# 0x400a51e8) normalizes it in place from the buffer's start: `jsr 0x4013f9dc`.
+# A loop take is skipped: state 4, as the normalizer leaves it.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x400a39ee
+size   = 6
+expect = "4eb94013f9dc"
+entry  = "lv_norm"
 
 # ------------------------------------------- 0021-dg-machines, batch 4 (cave33)
 

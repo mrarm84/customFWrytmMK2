@@ -1,29 +1,42 @@
 [mod]
 id      = "0028-live-slot"
-title   = "LIVE slot: sample slot 127 plays the recorder's buffer, while it records"
+title   = "Live loops: tracks 1, 2, 5 and 6 record into slots 124..127 and play while recording"
 
 enabled = true
+
+# cave2's tail is 0023's too (a measuring build, off by default).
+excludes = ["0023-isr-meter"]
 
 # re-only | built | hardware-verified | retracted
 status  = "built"
 
 summary = """
-Sample slot 127 is the recorder's buffer. Record with the stock recorder (from
-any screen, SAMPLING + YES: arm, then record, then stop; SAMPLING + NO
-discards; SRC, THR and RLEN as set in the recorder), and any track whose sample
-machine is set to slot 127 plays the recording: from a few milliseconds after
-it starts, while it is still being written. While recording the slot is as long
-as RLEN, so STA and END span the whole length and STA locks slice it; once
-done it is as long as what was recorded.
+Four live loops. The stock recorder's 33 s buffer is split into four regions of
+8.25 s (396000 samples), one per loop track: track 1 (BD) records into and plays
+slot 124, 2 (SD) slot 125, 5 (BT) slot 126, 6 (LT) slot 127. The four have a
+voice each, so all four loops sound at once.
 
-A detour on the exit of the stock recorder (0x4013f56c, run every audio
-interrupt) points slot 127's table entry (0x41329e70 + 16 * 127) at the
-recording buffer 0x42c62190, as the stock preview does for slot 130. No audio is copied: about
-20 instructions a block.
+Select a loop track and record with the stock recorder - SAMPLING + YES from any
+screen: arm, start, stop; SAMPLING + NO discards; SRC, THR and RLEN as set in the
+recorder. The take goes into that track's region; its slot plays it a few ms
+after the take starts, while it is still being written. While recording the slot
+is RLEN long (at most 8.25 s), so STA/END span the loop and STA locks slice it;
+once done, as long as what was recorded. A loop take is not normalized: it keeps
+the input's level. Any other track records as stock, into the whole buffer -
+over the loops' audio.
 
-The recording is not saved: a project or sample reload puts slot 127's own
-sample back until the next recording. Played faster than it records, the
-playback overtakes the write and plays the previous recording's audio. Not yet
+How: the region is chosen on entry to rec_arm and rec_start (0x4013f878,
+0x4013f8a6, UI context) from the selected track. Detours on the recorder's write
+(0x4013f828: the two planes' bases), its two limits (0x4013f800, 0x4013f846) and
+its exit (0x4013f866) send the take to the region and point each region's slot
+table entry (0x41329e70 + 16 * slot) at it every block, so a project or sample
+reload does not lose the loops. The finished-take handler's normalizer call
+(0x400a39ee) is skipped for a loop take. No audio is copied: about 40
+instructions a block.
+
+Not saved: power off and the loops are gone (the SAMPLING screen's save is for
+non-loop takes; it reads the buffer's start). Played faster than it records, a
+loop runs past the take into older audio. Emulator-tested (42 checks); not yet
 run on a unit.
 """
 
