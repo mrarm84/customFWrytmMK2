@@ -1,0 +1,35 @@
+[mod]
+id      = "0028-live-slot"
+title   = "LIVE slot: sample slot 127 plays the recorder's buffer, while it records"
+
+enabled = true
+
+# re-only | built | hardware-verified | retracted
+status  = "built"
+
+summary = """
+Sample slot 127 is the recorder's buffer. Record with the stock recorder (from
+any screen, SAMPLING + YES: arm, then record, then stop; SAMPLING + NO
+discards; SRC, THR and RLEN as set in the recorder), and any track whose sample
+machine is set to slot 127 plays the recording: from a few milliseconds after
+it starts, while it is still being written. While recording the slot is as long
+as RLEN, so STA and END span the whole length and STA locks slice it; once
+done it is as long as what was recorded.
+
+A detour on the exit of the stock recorder (0x4013f56c, run every audio
+interrupt) points slot 127's table entry (0x41329e70 + 16 * 127) at the
+recording buffer 0x42c62190, as the stock preview does for slot 130. No audio is copied: about
+20 instructions a block.
+
+The recording is not saved: a project or sample reload puts slot 127's own
+sample back until the next recording. Played faster than it records, the
+playback overtakes the write and plays the previous recording's audio. Not yet
+run on a unit.
+"""
+
+[sources]
+stub = "stub.s"
+
+[requires]
+shared = false
+symbols = []

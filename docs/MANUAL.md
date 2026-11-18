@@ -22,6 +22,7 @@ The default image is
 | 0025 | none | PERF pads push their track: filter closes, res/delay/reverb up, a random slow LFO |
 | 0022 | none | the delay's longest time is 5.33 s (was 8 s), freeing 2 MB of RAM for new effects and machines |
 | 0021 | SYNTH page, machine DG SINE, DG SAW, DG PULSE, DG FM2 or DG ORGAN | new digital machines, chromatically tuned, on every track |
+| 0028 | SAMPLING + YES; sample slot 127 | record from any screen; slot 127 plays the recording while it records |
 
 0000 is the shared code the others call into. It has no controls.
 
@@ -676,6 +677,48 @@ machines that need RAM (a chorus, wavetables, plucked strings) have 2 MB to use.
 - The delay sounds as before at any time up to 5.33 s. Settings that asked for
   more (a long TIME at a slow tempo, up to 8 s on stock) hold at 5.33 s.
 - Not yet run on hardware: check long delays and ping-pong at slow tempos.
+
+## 0028 - LIVE slot
+
+Sample slot 127 plays whatever the stock recorder records, from a few
+milliseconds after the recording starts. Nothing is copied or saved: the slot
+reads the recorder's own buffer, as the recorder's preview does.
+
+**Record.** From any screen, hold SAMPLING:
+
+| keys | recorder | then |
+|---|---|---|
+| SAMPLING + YES | idle | armed: recording starts when the input passes THR |
+| SAMPLING + YES | armed | recording starts now |
+| SAMPLING + YES | recording | stops |
+| SAMPLING + NO | armed or recording | discards |
+
+Source, threshold and length are the recorder's own: SRC, THR and RLEN on the
+SAMPLING screen. RLEN in steps (1 to 128, at the current tempo) stops the
+recording by itself; past RLEN 128 it runs to the buffer's end, 33 s.
+
+**Play.** Set a track's sample machine (SAMPLE page, SMP) to slot 127. Trigs
+play the recording:
+
+- while recording, the slot is RLEN long, so STA, END and LOOP span the whole
+  length to come and STA locks slice it, a trig playing what has arrived;
+- once the recording stops, the slot is as long as what was recorded;
+- every new recording replaces it, so the pattern plays each new take.
+
+**Limits.**
+
+- Slot 127 is the live slot: from the first recording on, its own sample is
+  not heard until a project or sample reload, and the next recording takes it
+  back.
+- Not saved. Power off, or a project or sample reload, and it is gone; save it
+  from the SAMPLING screen as stock if you want to keep it.
+- Played faster than it records (TUN up), or from ahead of the recording (STA),
+  the playback reaches audio not yet recorded and plays what the previous
+  recording left there.
+- Mono, as the stock recorder.
+- Not yet run on a unit: whether SAMPLING + YES works on every screen, and what
+  the SAMPLING screen shows after a recording made outside it, are to be
+  checked.
 
 ## Returning to stock
 

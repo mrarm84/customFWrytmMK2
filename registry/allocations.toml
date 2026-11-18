@@ -5513,6 +5513,28 @@ disassembly reaches into it from outside. 0021's batch 4 points that entry at it
 new machine in the span. Not proven on hardware, as cave25.
 """
 
+# ---------------------------------------------------------- 0028-live-slot
+
+# In cave16's free tail, after 0023's word packer: live_rec, slot 127's table
+# entry then the recorder's epilogue.
+[[cave]]
+owner = "0028-live-slot"
+addr  = 0x400b21d4
+size  = 0x56
+note  = "cave16's last 86 B, after 0023's packer: slot 127's entry and the recorder's epilogue (live_rec)."
+
+# The stock recorder's (0x4013f56c, every audio interrupt) single exit, its
+# epilogue: `moveml %sp@,%d2-%d4/%a2; lea %sp@(16),%sp; rts`. The stub re-emits
+# it whole and returns. Nothing branches into 0x4013f86a..0x4013f86f; the
+# completing block's `braw 0x4013f450` at 0x4013f856 leaves another way.
+[[detour]]
+owner  = "0028-live-slot"
+addr   = 0x4013f866
+size   = 6
+expect = "4cd7041c4fef0010"
+entry  = "live_rec"
+rejoin = "none"             # re-emits the epilogue and returns
+
 # ------------------------------------------- 0021-dg-machines, batch 4 (cave33)
 
 [[cave]]

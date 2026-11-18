@@ -1969,3 +1969,41 @@ note = "Per voice v at +8v, two longs: the coefficients filter_env_commands mult
 addr = 0x4010cf88
 status = "verified"
 note = "Fills filter_cal_coeffs from the calibration object 0x400fade6 returns, or from the defaults at 0x401ef190 when its +16 word is 0."
+
+# Traced 2026-11-18 for mods/0028-live-slot: the stock recorder and the sample slot table.
+
+[fn.rec_block]
+addr = 0x4013f56c
+sig = "void(int32 *rxbuf, int32 *fxring)"
+status = "verified"
+note = "The recorder, every audio interrupt (through a0 at 0x40121394). Mixes the source 0x413189bf selects (AUDIO IN L+R, L, R, voice slots, USB...) mono into 0x80007f80, updates the meters (0x419f0324..0x419f032c), in state 1 starts recording when a sample passes the threshold from 0x413189c3, and in state 2 appends: high 16 bits to rec_buf, low 8 to 0x42adf610. Stops (0x4013f450, state 3, UI event 0x27 at 0x40290e78) at the target or at 1584000 samples. Single exit, the epilogue at 0x4013f866, except the stopping block's braw 0x4013f450."
+
+[data.rec_state]
+addr = 0x419f0330
+status = "verified"
+note = "Recorder state: 0 idle, 1 armed, 2 recording, 3 done, 4 (accepted by arm and start like 0). rec_count 0x419f0320 samples recorded, rec_target 0x419f031c samples to record (rec_max_samples at the start), rec_steps 0x419f0318 RLEN in steps (1 << setting, 0 for the setting past 7: the whole buffer)."
+
+[fn.rec_arm]
+addr = 0x4013f878
+status = "verified"
+note = "State 0 or 4 -> 1, count cleared. Interrupts masked. rec_start 0x4013f8a6: state 0, 1 or 4 -> 2, count cleared, target = rec_max_samples(); rec_stop 0x4013f8f0: state 2 -> 3; rec_discard 0x4013f914: state 1..4 -> 0 with count cleared. rec_set_rlen 0x4013f4fc(setting) in state 0 or 4."
+
+[fn.rec_max_samples]
+addr = 0x4013f532
+status = "verified"
+note = "Samples to record: 1584000 without RLEN, else rec_steps at the tempo 0x4011f2f0 returns (steps * 5760000 / (4 * tempo), times 60)."
+
+[data.rec_buf]
+addr = 0x42c62190
+status = "verified"
+note = "The recording, 16-bit mono words, 1584000 of them (33 s at 48 kHz). The stock preview (0x40132e36) points slot 130 at rec_buf + 2 * trim start, 16-byte aligned, through sample_slot_set."
+
+[data.sample_slots]
+addr = 0x41329e70
+status = "verified"
+note = "131 entries of 16 bytes: +0 the sample data (16-bit words), +4 the rate word (48000 when 0 was given), +8 the length in samples (bytes / 2), +12 the rate ratio, 1.0 = 0x40000000. Index = the track's SMP value (byte +4 of the track's engine parameters at 0x8000f776 + 84 * (track + 1)); 130 is the recorder's preview. A trig (0x4011c796) copies +0, +8 and +12 into the voice. sample_slot_set 0x4011bf1e(slot, data, bytes, rate); sample_slot_clear 0x4011c006(slot) points it at the silent 248 samples at 0x4132a6a0."
+
+[fn.sampler_led_keys]
+addr = 0x40138142
+status = "inferred"
+note = "SamplerLedView's key handler (vtable +8 at 0x40234d04). With key 180 (read as SAMPLING, and 68/69 as YES/NO, from the recorder screen's labels; not checked on a unit; held by 0x40081bbc(0xb4)) held: key 68 arms (idle), starts (armed) or stops (recording); key 69 discards (armed, recording or state 4). Marks +76 so releasing SAMPLING does not open the screen. Which screens it is live on is not traced."
